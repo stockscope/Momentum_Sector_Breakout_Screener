@@ -3,5 +3,6 @@ yfinance
 pandas
 matplotlib
 seaborn
-openpyxl
+openpyxl         # for Excel export
+ta               # for RSI, EMAs (optional: use only if you're using ta-lib-style indicators)
 numpy
