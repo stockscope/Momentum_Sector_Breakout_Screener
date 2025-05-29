@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import yfinance as yf
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import matplotlib.pyplot as plt
 import seaborn as sns
 import matplotlib
@@ -19,17 +19,22 @@ with st.expander("🧠 **Screening Criteria Used**", expanded=True):
     - **Universe**: NIFTY 500 stocks
     - **Top Sectors**: Based on average **1-week return**
     - **Setup Detection**:
-        - 📈 **Breakout**: Close ≥ 98% of 20-day high and near 52W high
+        - 📈 **Multi-timeframe Breakout**: Close ≥ 98% of 20-day high **and** near 52W high
         - 🔁 **Retest**: Close ≥ 50 EMA and ≤ 103% of 50 EMA
         - 📉 **Pullback**: Price above all EMAs but short-term MA < long-term MA
-    - **Filters**:
+    - **Momentum Filters**:
         - RSI (14) between 50–70
         - ADR > 3%
+    - **Volume & Liquidity Filters**:
         - Avg Volume > 500K
         - RVOL > 1.5
         - Beta < 2.5
-    - **Displayed Metrics**:
-        - Price, Returns, EMAs, RSI, ADR, RVOL, Volume, Float (if available), Setup Type
+        - Float (if available)
+    - **Risk Metrics**:
+        - 🎯 Reward:Risk based on 52W High target & 7% Stop-Loss
+    - **Features**:
+        - 🎨 Color-coded setups
+        - 📤 Excel export
     """)
 
 @st.cache_data(show_spinner=False)
@@ -62,7 +67,7 @@ with st.spinner("🔍 Screening in progress... please wait"):
     symbol_name_map = dict(zip(df_nifty500['Ticker'], df_nifty500['Company Name']))
     sector_map = dict(zip(df_nifty500['Ticker'], df_nifty500['Industry']))
 
-    end_date = datetime.now()
+    end_date = datetime.now(timezone.utc)
     start_date = end_date - timedelta(days=365)
     data = batch_download(tickers, start=start_date, end=end_date)
 
