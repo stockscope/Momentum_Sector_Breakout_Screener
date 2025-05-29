@@ -26,10 +26,7 @@ with st.expander("🧠 **Screening Criteria Used**", expanded=True):
         - Proximity to 52W High is highlighted
     - **Displayed Metrics**:
         - Price, 1D/1W/1M Returns, Volume, Setup Type
-    """)
-# Show spinner during screening
-with st.spinner("🔍 Screening in progress... please wait"):
-    
+    """)   
 # Load CSV
 csv_url = "https://raw.githubusercontent.com/stockscope/Momentum_Sector_Breakout_Screener/main/ind_nifty500list.csv"
 df_nifty500 = pd.read_csv(csv_url)
