@@ -12,16 +12,16 @@ matplotlib.rcParams['axes.unicode_minus'] = False
 
 st.set_page_config(layout="wide")
 st.title("📊 Momentum Sector Breakout Screener (NIFTY 500)")
-st.markdown("Identifies breakout, retest, and pullback setups in top-performing sectors using momentum, volume, and risk filters.")
+st.markdown("Identifies breakout or retest setups in top-performing sectors based on trend, volume, and returns.")
 
 with st.expander("🧠 **Screening Criteria Used**", expanded=True):
     st.markdown("""
     - **Universe**: NIFTY 500 stocks
     - **Top Sectors**: Based on average **1-week return**
     - **Setup Detection**:
-        - 📈 **Breakout**: Close ≥ 98% of high from **20D / 3M / 6M / 52W**
+        - 📈 **Breakout**: Close ≥ 98% of 20-day high and near 52W high
         - 🔁 **Retest**: Close ≥ 50 EMA and ≤ 103% of 50 EMA
-        - 📉 **Pullback**: Price above all EMAs but 10MA < 20EMA
+        - 📉 **Pullback**: Price above all EMAs but short-term MA < long-term MA
     - **Filters**:
         - RSI (14) between 50–70
         - ADR > 3%
@@ -29,8 +29,26 @@ with st.expander("🧠 **Screening Criteria Used**", expanded=True):
         - RVOL > 1.5
         - Beta < 2.5
     - **Displayed Metrics**:
-        - Price, Returns, EMAs, RSI, ADR, RVOL, Volume, Float, Breakout Timeframe, Setup Type
+        - Price, Returns, EMAs, RSI, ADR, RVOL, Volume, Float (if available), Setup Type
     """)
+
+@st.cache_data(show_spinner=False)
+def batch_download(tickers, start, end):
+    all_data = {}
+    batch_size = 100
+    for i in range(0, len(tickers), batch_size):
+        batch = tickers[i:i+batch_size]
+        try:
+            batch_data = yf.download(batch, start=start, end=end, interval='1d', group_by='ticker', auto_adjust=False, progress=False)
+            if isinstance(batch_data.columns, pd.MultiIndex):
+                for ticker in batch:
+                    if ticker in batch_data.columns.levels[0]:
+                        all_data[ticker] = batch_data[ticker].copy()
+            else:  # Single ticker
+                all_data[batch[0]] = batch_data.copy()
+        except Exception as e:
+            print(f"Download failed for batch {batch}: {e}")
+    return all_data
 
 with st.spinner("🔍 Screening in progress... please wait"):
     csv_url = "https://raw.githubusercontent.com/stockscope/Momentum_Sector_Breakout_Screener/main/ind_nifty500list.csv"
@@ -45,14 +63,20 @@ with st.spinner("🔍 Screening in progress... please wait"):
     sector_map = dict(zip(df_nifty500['Ticker'], df_nifty500['Industry']))
 
     end_date = datetime.now()
-    start_date = end_date - timedelta(days=400)
-    data = yf.download(tickers, start=start_date, end=end_date, interval='1d', group_by='ticker', auto_adjust=False, progress=False)
+    start_date = end_date - timedelta(days=365)
+    data = batch_download(tickers, start=start_date, end=end_date)
+
+    if not data:
+        st.error("❌ No data downloaded. Please check the internet or try again later.")
+        st.stop()
 
     results = []
     sector_perf = {}
 
     for ticker in tickers:
         try:
+            if ticker not in data:
+                continue
             df = data[ticker].copy()
             df.dropna(inplace=True)
 
@@ -61,8 +85,6 @@ with st.spinner("🔍 Screening in progress... please wait"):
             df['50EMA'] = df['Adj Close'].ewm(span=50, adjust=False).mean()
             df['200EMA'] = df['Adj Close'].ewm(span=200, adjust=False).mean()
             df['20D_High'] = df['High'].rolling(window=20).max()
-            df['3M_High'] = df['High'].rolling(window=63).max()
-            df['6M_High'] = df['High'].rolling(window=126).max()
             df['52W_High'] = df['High'].rolling(window=252).max()
             df['Avg_Vol_20D'] = df['Volume'].rolling(window=20).mean()
             df['Daily_Change'] = df['High'] - df['Low']
@@ -76,7 +98,7 @@ with st.spinner("🔍 Screening in progress... please wait"):
             rs = avg_gain / avg_loss
             df['RSI'] = 100 - (100 / (1 + rs))
 
-            if len(df) < 252:
+            if len(df) < 22:
                 continue
 
             latest = df.iloc[-1]
@@ -92,6 +114,7 @@ with st.spinner("🔍 Screening in progress... please wait"):
             sector_perf.setdefault(sector, []).append(return_1w)
 
             vol_spike = latest['Volume'] > 1.5 * latest['Avg_Vol_20D']
+            near_52w_high = latest['Adj Close'] >= 0.95 * latest['52W_High']
             avg_volume_check = latest['Avg_Vol_20D'] > 500000
             rsi_ok = 50 <= latest['RSI'] <= 70
             adr_ok = latest['ADR'] > 3
@@ -101,19 +124,8 @@ with st.spinner("🔍 Screening in progress... please wait"):
             float_shares = info.get('floatShares', np.nan)
 
             setup = ""
-            breakout_tf = ""
-            if latest['Adj Close'] >= 0.98 * latest['52W_High']:
+            if (latest['Adj Close'] >= 0.98 * latest['20D_High'] and near_52w_high):
                 setup = "Breakout"
-                breakout_tf = "52W"
-            elif latest['Adj Close'] >= 0.98 * latest['6M_High']:
-                setup = "Breakout"
-                breakout_tf = "6M"
-            elif latest['Adj Close'] >= 0.98 * latest['3M_High']:
-                setup = "Breakout"
-                breakout_tf = "3M"
-            elif latest['Adj Close'] >= 0.98 * latest['20D_High']:
-                setup = "Breakout"
-                breakout_tf = "20D"
             elif (latest['Adj Close'] >= latest['50EMA'] and latest['Adj Close'] <= 1.03 * latest['50EMA']):
                 setup = "Retest"
             elif (latest['Adj Close'] > latest['20EMA'] and latest['20EMA'] > latest['50EMA'] and latest['10MA'] < latest['20EMA']):
@@ -143,7 +155,6 @@ with st.spinner("🔍 Screening in progress... please wait"):
                     'Float': float_shares,
                     'Beta': beta,
                     'Setup': setup,
-                    'Breakout_TF': breakout_tf,
                     'Stop_Loss': stop_loss_price,
                     'Reward:Risk': rr_ratio
                 })
@@ -151,6 +162,7 @@ with st.spinner("🔍 Screening in progress... please wait"):
             continue
 
     df_all = pd.DataFrame(results)
+
     sector_perf_avg = {k: sum(v)/len(v) for k, v in sector_perf.items()}
     top_sectors = sorted(sector_perf_avg.items(), key=lambda x: x[1], reverse=True)[:5]
     top_sector_names = [s[0] for s in top_sectors]
@@ -167,7 +179,7 @@ st.markdown("### 📈 Top Stock Setups in Leading Sectors")
 setup_colors = {"Breakout": "#34c759", "Retest": "#007aff", "Pullback": "#ff9500"}
 df_display = df_filtered.copy()
 df_display['Setup'] = df_display['Setup'].apply(lambda x: f"<span style='color:{setup_colors.get(x, 'black')}'>{x}</span>")
-st.write(df_display[['Ticker', 'Name', 'Sector', 'Price', 'Return_1W', 'Return_1M', 'RSI_14', 'ADR_%', 'Breakout_TF', 'Setup']].head(20).to_html(escape=False, index=False), unsafe_allow_html=True)
+st.write(df_display[['Ticker', 'Name', 'Sector', 'Price', 'Return_1W', 'Return_1M', 'RSI_14', 'ADR_%', 'Setup']].head(20).to_html(escape=False, index=False), unsafe_allow_html=True)
 
 st.markdown("### 📊 Return Distribution of Selected Stocks")
 fig, ax = plt.subplots(figsize=(12, 5))
