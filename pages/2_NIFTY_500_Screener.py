@@ -203,7 +203,7 @@ else:
     # Display relevant columns, including 1D Return and Near_52W_High as per description
     display_cols = ['Ticker', 'Sector', 'Price', 'Return_1D', 'Return_1W', 'Return_1M', 
                     'Setup', 'Vol_Spike', 'Near_52W_High', 'Volume (M)']
-    st.dataframe(df_filtered[display_cols].head(20), use_container_width=True)
+    st.dataframe(df_filtered[display_cols].head(20), use_container_width=True, hide_index=True)
 
 st.markdown("### 📊 Return Distribution of Selected Stocks (Top Sectors & Setups)")
 if df_filtered.empty:
