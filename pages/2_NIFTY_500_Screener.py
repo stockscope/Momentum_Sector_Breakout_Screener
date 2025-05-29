@@ -181,13 +181,15 @@ def analyze_stocks_and_sectors(downloaded_stock_data, tickers_tuple, sector_map_
                 '52W_High': round(latest['52W_High'], 2) if pd.notna(latest['52W_High']) else np.nan,
                 'Near_52W_High': near_52w_high_info,
                 'Setup': setup,
-                'Volume (M)': round(latest['Volume'] / 1e6, 2) if pd.notna(latest['Volume']) else np.nan, # Corrected to 2 decimals
-                'Avg_Vol_20D (M)': round(latest['Avg_Vol_20D'] / 1e6, 2) if pd.notna(latest['Avg_Vol_20D']) else np.nan, # Corrected to 2 decimals
+                'Volume (M)': round(latest['Volume'] / 1e6, 2) if pd.notna(latest['Volume']) else np.nan,
+                'Avg_Vol_20D (M)': round(latest['Avg_Vol_20D'] / 1e6, 2) if pd.notna(latest['Avg_Vol_20D']) else np.nan,
                 'Vol_Spike': vol_spike,
                 'RSI': round(latest['RSI'], 2) if pd.notna(latest['RSI']) else np.nan
             })
-        except Exception:
-            # st.sidebar.warning(f"Error processing {ticker}: {e}") # Uncomment for debugging
+        except Exception: # Catch all exceptions for a single ticker to continue with others
+            # For debugging, you might want to log the ticker and the specific error:
+            # import traceback
+            # st.sidebar.warning(f"Error processing {ticker}: {traceback.format_exc()}")
             continue
 
     df_all = pd.DataFrame(results)
@@ -218,8 +220,9 @@ if not tickers:
 with st.spinner("📥 Fetching market data from yfinance... (this may take a few minutes for NIFTY 500)"):
     downloaded_stock_data = fetch_stock_data_from_yfinance(tuple(tickers), fetch_start_date, fetch_end_date)
 
-if not downloaded_stock_data:
+if not downloaded_stock_data: # If yf.download returns an empty dict or fails significantly
     st.warning("No stock data could be downloaded from yfinance. Results might be incomplete or empty.")
+    # Allow to proceed, analyze_stocks_and_sectors will handle empty downloaded_stock_data
 
 with st.spinner("⚙️ Processing data and identifying setups..."):
     df_all_results, sector_perf_avg_results = analyze_stocks_and_sectors(
@@ -280,12 +283,12 @@ else:
 
     styler = df_display.style.format({
         'Price': "{:.2f}",
-        'Return_1D': "{:.2f} %",
-        'Return_1W': "{:.2f} %",
-        'Return_1M': "{:.2f} %",
-        'Volume (M)': "{:.2f}", # Styler format also updated for Volume (M)
+        'Return_1D': "{:.2f}%", # No space before %
+        'Return_1W': "{:.2f}%", # No space before %
+        'Return_1M': "{:.2f}%", # No space before %
+        'Volume (M)': "{:.2f}",
         'RSI': "{:.2f}"
-    }, na_rep="-")
+    }, na_rep="-", precision=2) # Global precision hint for any other floats
 
     def setup_icon_formatter(val):
         if val == "Breakout 52w": return f"🌟 {val}"
