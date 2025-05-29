@@ -17,8 +17,9 @@ with st.expander("🧠 **Screening Criteria Used**", expanded=True):
     st.markdown("""
     - **Universe**: NIFTY 200 stocks
     - **Top Sectors**: Stocks shown are from the **top 5 performing sectors** based on average **1-week return**.
-    - **Setup Detection (Stricter)**:
-        - 📈 **Breakout**: Close ≥ **99%** of 20-day high
+    - **Setup Detection (Stricter & New)**:
+        - 🌟 **Breakout 52w**: Close ≥ **99%** of 52-week High (New, takes precedence)
+        - 📈 **Breakout**: Close ≥ **99%** of 20-day High
         - 🔁 **Retest**: Close ≥ 50 EMA and ≤ **102%** of 50 EMA
     - **Filters Applied Programmatically**:
         - Stocks must belong to one of the top 5 performing sectors.
@@ -26,12 +27,12 @@ with st.expander("🧠 **Screening Criteria Used**", expanded=True):
         - Volume Spike: Volume > 1.5× average 20-day volume (used for sorting, True values at top)
         - Proximity to 52W High is highlighted (shown as a column, Close ≥ 95% of 52W High)
     - **Displayed Metrics**:
-        - Price, 1D/1W/1M Returns, Volume, Setup Type, Near 52W High, Volume Spike, RSI
+        - Price, 1D/1W/1M Returns (all to 2 decimal places), Volume, Setup Type, Near 52W High, Volume Spike, RSI
     """)
 
 # --- Refactored Data Fetching and Processing Functions ---
 
-@st.cache_data(ttl=timedelta(days=1))
+@st.cache_data(ttl=timedelta(days=1), show_spinner=False)
 def load_nifty200_list_and_map():
     csv_url = "https://raw.githubusercontent.com/stockscope/Momentum_Sector_Breakout_Screener/main/ind_nifty200list.csv"
     try:
@@ -50,7 +51,7 @@ def load_nifty200_list_and_map():
     sector_map = dict(zip(df_nifty200['Ticker'], df_nifty200['Industry']))
     return tickers, sector_map, df_nifty200
 
-@st.cache_data(ttl=timedelta(hours=1))
+@st.cache_data(ttl=timedelta(hours=1), show_spinner=False)
 def fetch_stock_data_from_yfinance(tickers_tuple, start_date_str, end_date_str):
     tickers_list = list(tickers_tuple)
     if not tickers_list:
@@ -83,7 +84,7 @@ def fetch_stock_data_from_yfinance(tickers_tuple, start_date_str, end_date_str):
         
     return stock_data_processed
 
-@st.cache_data(ttl=timedelta(hours=1))
+@st.cache_data(ttl=timedelta(hours=1), show_spinner=False)
 def analyze_stocks_and_sectors(downloaded_stock_data, tickers_tuple, sector_map_dict, current_day_iso_str_for_analysis):
     results = []
     sector_returns_collector = {}
@@ -96,12 +97,13 @@ def analyze_stocks_and_sectors(downloaded_stock_data, tickers_tuple, sector_map_
             
             df = downloaded_stock_data[ticker].copy()
             df.dropna(subset=['Adj Close', 'High', 'Low', 'Open', 'Volume'], inplace=True)
-            if len(df) < 22:
+            if len(df) < 22: # Need at least 22 for 1-month return and 20-day calcs
                 continue
 
             df['50EMA'] = df['Adj Close'].ewm(span=50, adjust=False).mean()
             df['20D_High'] = df['High'].rolling(window=20, min_periods=1).max()
-            df['52W_High'] = df['High'].rolling(window=252, min_periods=1).max()
+            # Ensure enough data for 52W_High, use min_periods=1 to get a value if less than 252 days exist
+            df['52W_High'] = df['High'].rolling(window=252, min_periods=1).max() 
             df['Avg_Vol_20D'] = df['Volume'].rolling(window=20, min_periods=1).mean()
 
             delta = df['Adj Close'].diff()
@@ -113,21 +115,17 @@ def analyze_stocks_and_sectors(downloaded_stock_data, tickers_tuple, sector_map_
 
             if pd.notna(avg_gain) and pd.notna(avg_loss):
                 if avg_loss == 0:
-                    if avg_gain > 0:
-                        rs_val = np.inf
-                else:
-                    rs_val = avg_gain / avg_loss
+                    if avg_gain > 0: rs_val = np.inf
+                else: rs_val = avg_gain / avg_loss
             
             if pd.notna(rs_val):
-                if rs_val == np.inf:
-                    latest_rsi = 100.0
-                else:
-                    latest_rsi = 100 - (100 / (1 + rs_val))
+                if rs_val == np.inf: latest_rsi = 100.0
+                else: latest_rsi = 100 - (100 / (1 + rs_val))
             
-            if 'RSI' not in df.columns:
-                df['RSI'] = np.nan 
+            if 'RSI' not in df.columns: df['RSI'] = np.nan 
             df.loc[df.index[-1], 'RSI'] = latest_rsi
 
+            # 52W_High can be NaN if stock history is short, but other critical ones must be present
             if df[['50EMA', '20D_High', 'Avg_Vol_20D']].iloc[-1].isnull().any():
                 continue
 
@@ -151,12 +149,15 @@ def analyze_stocks_and_sectors(downloaded_stock_data, tickers_tuple, sector_map_
             elif pd.notna(latest['Volume']) and latest['Volume'] > 0 :
                 vol_spike = True 
 
-            near_52w_high = False
+            near_52w_high_info = False # This is for the "Near_52W_High" column (informational)
             if pd.notna(latest['52W_High']) and latest['52W_High'] > 0:
-                near_52w_high = latest['Adj Close'] >= 0.95 * latest['52W_High']
+                near_52w_high_info = latest['Adj Close'] >= 0.95 * latest['52W_High']
 
             setup = ""
-            if pd.notna(latest['20D_High']) and latest['Adj Close'] >= 0.99 * latest['20D_High']:
+            # Check for 52W Breakout first (takes precedence)
+            if pd.notna(latest['52W_High']) and latest['52W_High'] > 0 and latest['Adj Close'] >= 0.99 * latest['52W_High']:
+                setup = "Breakout 52w"
+            elif pd.notna(latest['20D_High']) and latest['Adj Close'] >= 0.99 * latest['20D_High']:
                 setup = "Breakout"
             elif pd.notna(latest['50EMA']) and latest['Adj Close'] >= latest['50EMA'] and latest['Adj Close'] <= 1.02 * latest['50EMA']:
                 setup = "Retest"
@@ -166,16 +167,23 @@ def analyze_stocks_and_sectors(downloaded_stock_data, tickers_tuple, sector_map_
 
             results.append({
                 'Ticker': ticker, 'Sector': sector,
-                'Price': latest['Adj Close'],
-                'Return_1D': return_1d, 'Return_1W': return_1w, 'Return_1M': return_1m,
-                '50EMA': latest['50EMA'], '20D_High': latest['20D_High'], '52W_High': latest['52W_High'],
-                'Near_52W_High': near_52w_high, 'Setup': setup,
-                'Volume (M)': latest['Volume'] / 1e6 if pd.notna(latest['Volume']) else np.nan,
-                'Avg_Vol_20D (M)': latest['Avg_Vol_20D'] / 1e6 if pd.notna(latest['Avg_Vol_20D']) else np.nan,
+                'Price': round(latest['Adj Close'], 2) if pd.notna(latest['Adj Close']) else np.nan,
+                'Return_1D': round(return_1d, 2) if pd.notna(return_1d) else np.nan,
+                'Return_1W': round(return_1w, 2) if pd.notna(return_1w) else np.nan,
+                'Return_1M': round(return_1m, 2) if pd.notna(return_1m) else np.nan,
+                '50EMA': round(latest['50EMA'], 2) if pd.notna(latest['50EMA']) else np.nan,
+                '20D_High': round(latest['20D_High'], 2) if pd.notna(latest['20D_High']) else np.nan,
+                '52W_High': round(latest['52W_High'], 2) if pd.notna(latest['52W_High']) else np.nan,
+                'Near_52W_High': near_52w_high_info, # Informational column
+                'Setup': setup,
+                'Volume (M)': round(latest['Volume'] / 1e6, 1) if pd.notna(latest['Volume']) else np.nan, # Volume in M can be 1 decimal
+                'Avg_Vol_20D (M)': round(latest['Avg_Vol_20D'] / 1e6, 1) if pd.notna(latest['Avg_Vol_20D']) else np.nan,
                 'Vol_Spike': vol_spike,
-                'RSI': latest['RSI'] 
+                'RSI': round(latest['RSI'], 2) if pd.notna(latest['RSI']) else np.nan
             })
         except Exception:
+            # For debugging, you might want to log the ticker and error:
+            # st.sidebar.warning(f"Error processing {ticker}: {e}")
             continue
 
     df_all = pd.DataFrame(results)
@@ -215,17 +223,21 @@ with st.spinner("⚙️ Processing data and identifying setups..."):
     )
 
 if df_all_results.empty:
-    st.warning("No stock data could be processed or no stocks met the screening criteria. This could be due to data download issues, no stocks matching the (now stricter) setup conditions, or market holidays.")
+    st.warning("No stock data could be processed or no stocks met the screening criteria. This could be due to data download issues, no stocks matching the setup conditions, or market holidays.")
     st.stop()
 
 st.markdown(f"Data processed on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (Market data up to {current_day_iso} or latest available)")
 
-# --- No Sidebar Filters, Programmatic Filtering by Top 5 Sectors ---
 sorted_sector_perf = sorted(sector_perf_avg_results.items(), key=lambda x: x[1], reverse=True)
-top_5_sector_names = [s[0] for s in sorted_sector_perf[:5]] # Get names of top 5 sectors
+top_5_sector_names = [s[0] for s in sorted_sector_perf[:5]]
 
 df_filtered = df_all_results[df_all_results['Sector'].isin(top_5_sector_names)]
-df_filtered = df_filtered.sort_values(by=['Vol_Spike', 'Return_1M'], ascending=[False, False])
+# Sort by Setup type (52w Breakout first), then Vol_Spike, then Return_1M
+setup_order = ["Breakout 52w", "Breakout", "Retest"]
+df_filtered['Setup_Sort'] = pd.Categorical(df_filtered['Setup'], categories=setup_order, ordered=True)
+df_filtered = df_filtered.sort_values(by=['Setup_Sort', 'Vol_Spike', 'Return_1M'], ascending=[True, False, False])
+df_filtered = df_filtered.drop(columns=['Setup_Sort'])
+
 
 st.markdown("### 🏆 Top Performing Sectors (1W Avg Return)")
 if not sector_perf_avg_results:
@@ -253,13 +265,15 @@ else:
     def highlight_setup_and_vol_spike(row_series):
         styles = pd.Series([''] * len(row_series), index=row_series.index)
         if 'Setup' in row_series.index:
-            if row_series['Setup'] == "Breakout":
-                styles.loc['Setup'] = 'background-color: #a6d96a;'
+            if row_series['Setup'] == "Breakout 52w":
+                styles.loc['Setup'] = 'background-color: #ffeda0;' # Light yellow/gold for 52w
+            elif row_series['Setup'] == "Breakout":
+                styles.loc['Setup'] = 'background-color: #a6d96a;' # greenish
             elif row_series['Setup'] == "Retest":
-                styles.loc['Setup'] = 'background-color: #fdae61;'
+                styles.loc['Setup'] = 'background-color: #fdae61;' # orange
         
         if 'Vol_Spike' in row_series.index and row_series['Vol_Spike']:
-            styles.loc['Vol_Spike'] = 'background-color: #fee08b;'
+            styles.loc['Vol_Spike'] = 'background-color: #fee08b;' # yellowish
         return styles
 
     styler = df_display.style.format({
@@ -267,12 +281,13 @@ else:
         'Return_1D': "{:.2f} %",
         'Return_1W': "{:.2f} %",
         'Return_1M': "{:.2f} %",
-        'Volume (M)': "{:.1f}",
+        'Volume (M)': "{:.1f}", # Volume can stay 1 decimal
         'RSI': "{:.2f}"
     }, na_rep="-")
 
     def setup_icon_formatter(val):
-        if val == "Breakout": return f"📈 {val}"
+        if val == "Breakout 52w": return f"🌟 {val}"
+        elif val == "Breakout": return f"📈 {val}"
         elif val == "Retest": return f"🔁 {val}"
         return val
     
@@ -286,14 +301,13 @@ else:
 
     csv = df_filtered.to_csv(index=False).encode('utf-8') 
     st.download_button(
-        label="📥 Download Screened Data as CSV", # Updated label
+        label="📥 Download Screened Data as CSV",
         data=csv,
-        file_name=f"nifty200_top_sectors_screened_{datetime.today().strftime('%Y%m%d')}.csv", # Updated filename
+        file_name=f"nifty200_top_sectors_screened_{datetime.today().strftime('%Y%m%d')}.csv",
         mime='text/csv'
     )
 
-# RSI Distribution chart
-st.markdown("### 📊 RSI Distribution for Screened Stocks") # Updated title
+st.markdown("### 📊 RSI Distribution for Screened Stocks")
 if df_filtered.empty or 'RSI' not in df_filtered.columns or df_filtered['RSI'].dropna().empty:
     st.info("No data available for RSI distribution (no stocks screened or RSI data missing).")
 else:
@@ -303,7 +317,7 @@ else:
     ax.axvline(30, color='green', linestyle='--', linewidth=1, label='Oversold (30)')
     ax.set_xlabel("RSI")
     ax.set_ylabel("Number of Stocks")
-    ax.set_title("RSI Histogram of Screened Stocks") # Updated title
+    ax.set_title("RSI Histogram of Screened Stocks")
     ax.legend()
     st.pyplot(fig)
 
