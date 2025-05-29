@@ -36,7 +36,7 @@ def load_nifty200_list_and_map():
         df_nifty200 = pd.read_csv(csv_url)
     except Exception as e:
         st.error(f"Error loading NIFTY 200 stock list from CSV: {e}")
-        return [], {}, {} # Return empty structures on error
+        return [], {}, {}
         
     df_nifty200.columns = df_nifty200.columns.str.strip()
     df_nifty200 = df_nifty200[~df_nifty200['Symbol'].str.contains("DUMMY", na=False)]
@@ -46,7 +46,7 @@ def load_nifty200_list_and_map():
 
     tickers = df_nifty200['Ticker'].tolist()
     sector_map = dict(zip(df_nifty200['Ticker'], df_nifty200['Industry']))
-    return tickers, sector_map, df_nifty200 # Return df_nifty200 for potential future use
+    return tickers, sector_map, df_nifty200
 
 @st.cache_data(ttl=timedelta(hours=1))
 def fetch_stock_data_from_yfinance(tickers_tuple, start_date_str, end_date_str):
@@ -62,7 +62,7 @@ def fetch_stock_data_from_yfinance(tickers_tuple, start_date_str, end_date_str):
         group_by='ticker', 
         auto_adjust=False, 
         progress=False,
-        timeout=30 # Added timeout
+        timeout=30
     )
     
     stock_data_processed = {}
@@ -72,12 +72,11 @@ def fetch_stock_data_from_yfinance(tickers_tuple, start_date_str, end_date_str):
     if isinstance(stock_data_downloaded.columns, pd.MultiIndex):
         for ticker in tickers_list:
             try:
-                # Check if data for the ticker is actually present and is a DataFrame
                 if ticker in stock_data_downloaded and isinstance(stock_data_downloaded[ticker], pd.DataFrame):
                     stock_data_processed[ticker] = stock_data_downloaded[ticker]
-            except KeyError: # Should be caught by 'ticker in stock_data_downloaded'
+            except KeyError:
                 pass 
-    elif len(tickers_list) == 1 and isinstance(stock_data_downloaded, pd.DataFrame): # Single ticker downloaded
+    elif len(tickers_list) == 1 and isinstance(stock_data_downloaded, pd.DataFrame):
         stock_data_processed[tickers_list[0]] = stock_data_downloaded
         
     return stock_data_processed
@@ -95,70 +94,52 @@ def analyze_stocks_and_sectors(downloaded_stock_data, tickers_tuple, sector_map_
             
             df = downloaded_stock_data[ticker].copy()
             df.dropna(subset=['Adj Close', 'High', 'Low', 'Open', 'Volume'], inplace=True)
-            if len(df) < 22: # Minimum for 20-day calcs and 1-month return
+            if len(df) < 22:
                 continue
 
-            # Indicators
             df['50EMA'] = df['Adj Close'].ewm(span=50, adjust=False).mean()
             df['20D_High'] = df['High'].rolling(window=20, min_periods=1).max()
             df['52W_High'] = df['High'].rolling(window=252, min_periods=1).max()
             df['Avg_Vol_20D'] = df['Volume'].rolling(window=20, min_periods=1).mean()
 
-            # RSI Calculation
+            # --- Revised and Simplified RSI Calculation ---
             delta = df['Adj Close'].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=14, min_periods=1).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=14, min_periods=1).mean()
-            
-            rs_val = np.nan # Default RSI to NaN
-            # Check if latest loss is available and not NaN
-            if pd.notna(loss.iloc[-1]):
-                if loss.iloc[-1] == 0: # Avoid division by zero
-                    # If gain is also 0 or NaN, RSI is typically 50 or undefined.
-                    # If gain > 0, RSI is 100.
-                    if pd.notna(gain.iloc[-1]) and gain.iloc[-1] > 0:
-                        rs_val = np.inf
-                    else: # gain is 0 or NaN
-                        # A common convention is RSI = 50 if avg_gain = avg_loss = 0, but yfinance behavior might vary
-                        # For simplicity, if loss is 0 and gain is 0 or NaN, we might leave rs_val as NaN or set to 0 for RSI calculation.
-                        # If both are zero, it means no price change in 14 periods for RSI calc.
-                        # Let's default to 0 for RS if both are 0 or gain is not positive.
-                        rs_val = 0 # This would lead to RSI 50 if rs = 0 if gain is also 0
-                        if pd.notna(gain.iloc[-1]) and gain.iloc[-1] == 0 and loss.iloc[-1] == 0:
-                             pass # rs_val remains 0, implies RSI = 100 / (1+0) = 100, which is wrong.
-                                  # RSI should be 50 if no net change. Or neutral.
-                                  # If gain and loss are both 0, rs is undefined. Some use RS=1 -> RSI=50.
-                                  # Let's stick to the formula: if loss is 0 and gain is 0, rs becomes 0 (by gain/loss logic) -> RSI = 100.
-                                  # If loss is 0 and gain is >0, rs becomes inf -> RSI = 100.
-                                  # This seems fine. The critical part is loss.iloc[-1] != 0.
-                                  # If gain.iloc[-1] / loss.iloc[-1]
-                                  # if loss.iloc[-1] == 0 and gain.iloc[-1] == 0 : RSI can be considered 50 or remain NaN.
-                                  # Let's ensure we handle division by zero robustly for RS.
-                                  # RSI is 100 - (100 / (1 + RS))
-                                  # if loss is 0, gain is 0 -> RS = 0/0 (NaN). RSI -> NaN.
-                                  # if loss is 0, gain > 0 -> RS = inf. RSI -> 100.
-                                  # Let's use try-except for division
-                                  pass # rs_val remains NaN if gain is also 0 or NaN
-                        
-                else: # loss.iloc[-1] is not 0 and not NaN
-                    if pd.notna(gain.iloc[-1]):
-                         rs_val = gain.iloc[-1] / loss.iloc[-1]
+            avg_gain = (delta.where(delta > 0, 0)).rolling(window=14, min_periods=1).mean().iloc[-1]
+            avg_loss = (-delta.where(delta < 0, 0)).rolling(window=14, min_periods=1).mean().iloc[-1]
 
-
+            rs_val = np.nan
             latest_rsi = np.nan
-            if pd.notna(rs_val):
-                if rs_val == np.inf : latest_rsi = 100.0
-                else: latest_rsi = 100 - (100 / (1 + rs_val))
-            df['RSI'] = latest_rsi # Assign to the last row for collection
 
-            if df[['50EMA', '20D_High', 'Avg_Vol_20D']].iloc[-1].isnull().any(): # RSI can be NaN
+            if pd.notna(avg_gain) and pd.notna(avg_loss):
+                if avg_loss == 0:
+                    if avg_gain > 0:
+                        rs_val = np.inf  # Results in RSI 100
+                    # If avg_gain is also 0, rs_val remains NaN, latest_rsi remains NaN.
+                    # (Some conventions might set RS=1 for RSI=50, but NaN if undefined is safer)
+                else:
+                    rs_val = avg_gain / avg_loss
+            
+            if pd.notna(rs_val):
+                if rs_val == np.inf:
+                    latest_rsi = 100.0
+                else:
+                    latest_rsi = 100 - (100 / (1 + rs_val))
+            
+            # Assign the calculated RSI to the last row of the DataFrame for this stock
+            # Ensure 'RSI' column exists or create it
+            if 'RSI' not in df.columns:
+                df['RSI'] = np.nan 
+            df.loc[df.index[-1], 'RSI'] = latest_rsi
+            # --- End of Revised RSI Calculation ---
+
+            if df[['50EMA', '20D_High', 'Avg_Vol_20D']].iloc[-1].isnull().any():
                 continue
 
             latest = df.iloc[-1]
             
-            # Ensure enough historical data for returns
             prev_day_adj_close = df['Adj Close'].iloc[-2] if len(df) >= 2 else np.nan
-            prev_week_adj_close = df['Adj Close'].iloc[-6] if len(df) >= 6 else np.nan # 5 trading days ago
-            month_ago_adj_close = df['Adj Close'].iloc[-22] if len(df) >= 22 else np.nan # Approx 21 trading days ago
+            prev_week_adj_close = df['Adj Close'].iloc[-6] if len(df) >= 6 else np.nan
+            month_ago_adj_close = df['Adj Close'].iloc[-22] if len(df) >= 22 else np.nan
 
             return_1d = ((latest['Adj Close'] - prev_day_adj_close) / prev_day_adj_close) * 100 if pd.notna(prev_day_adj_close) and prev_day_adj_close != 0 else np.nan
             return_1w = ((latest['Adj Close'] - prev_week_adj_close) / prev_week_adj_close) * 100 if pd.notna(prev_week_adj_close) and prev_week_adj_close != 0 else np.nan
@@ -171,7 +152,7 @@ def analyze_stocks_and_sectors(downloaded_stock_data, tickers_tuple, sector_map_
             vol_spike = False
             if pd.notna(latest['Avg_Vol_20D']) and latest['Avg_Vol_20D'] > 0:
                 vol_spike = latest['Volume'] > 1.5 * latest['Avg_Vol_20D']
-            elif pd.notna(latest['Volume']) and latest['Volume'] > 0 : # Avg_Vol_20D is 0 or NaN, but Volume exists
+            elif pd.notna(latest['Volume']) and latest['Volume'] > 0 :
                 vol_spike = True 
 
             near_52w_high = False
@@ -179,10 +160,9 @@ def analyze_stocks_and_sectors(downloaded_stock_data, tickers_tuple, sector_map_
                 near_52w_high = latest['Adj Close'] >= 0.95 * latest['52W_High']
 
             setup = ""
-            # Stricter criteria
-            if pd.notna(latest['20D_High']) and latest['Adj Close'] >= 0.99 * latest['20D_High']: # Changed from 0.98
+            if pd.notna(latest['20D_High']) and latest['Adj Close'] >= 0.99 * latest['20D_High']:
                 setup = "Breakout"
-            elif pd.notna(latest['50EMA']) and latest['Adj Close'] >= latest['50EMA'] and latest['Adj Close'] <= 1.02 * latest['50EMA']: # Changed from 1.03
+            elif pd.notna(latest['50EMA']) and latest['Adj Close'] >= latest['50EMA'] and latest['Adj Close'] <= 1.02 * latest['50EMA']:
                 setup = "Retest"
             
             if pd.isna(latest['Adj Close']) or pd.isna(latest['Volume']) or setup == "":
@@ -190,22 +170,20 @@ def analyze_stocks_and_sectors(downloaded_stock_data, tickers_tuple, sector_map_
 
             results.append({
                 'Ticker': ticker, 'Sector': sector,
-                'Price': latest['Adj Close'], # Keep as float, round later
+                'Price': latest['Adj Close'],
                 'Return_1D': return_1d, 'Return_1W': return_1w, 'Return_1M': return_1m,
                 '50EMA': latest['50EMA'], '20D_High': latest['20D_High'], '52W_High': latest['52W_High'],
                 'Near_52W_High': near_52w_high, 'Setup': setup,
                 'Volume (M)': latest['Volume'] / 1e6 if pd.notna(latest['Volume']) else np.nan,
                 'Avg_Vol_20D (M)': latest['Avg_Vol_20D'] / 1e6 if pd.notna(latest['Avg_Vol_20D']) else np.nan,
                 'Vol_Spike': vol_spike,
-                'RSI': latest['RSI'] # Already calculated and stored in df
+                'RSI': latest['RSI'] 
             })
-        except Exception as e:
-            # st.sidebar.warning(f"Skipping {ticker} due to error: {str(e)[:50]}") # For debugging
+        except Exception:
             continue
 
     df_all = pd.DataFrame(results)
     if not df_all.empty:
-        # Drop rows where essential data for display is missing or no setup identified
         df_all.dropna(subset=['Price', 'Ticker', 'Setup'], inplace=True)
         df_all = df_all[df_all['Setup'] != ""]
 
@@ -219,8 +197,6 @@ def analyze_stocks_and_sectors(downloaded_stock_data, tickers_tuple, sector_map_
 
 # --- Main App Logic ---
 current_day_iso = datetime.today().strftime('%Y-%m-%d')
-# For yfinance, end date is inclusive for string dates.
-# Use current_day_iso for end_date to get data up to 'today' if available.
 fetch_end_date = current_day_iso
 fetch_start_date = (datetime.today() - timedelta(days=400)).strftime('%Y-%m-%d')
 
@@ -232,13 +208,11 @@ if not tickers:
     st.stop()
 
 with st.spinner("📥 Fetching market data from yfinance... (this may take a few minutes)"):
-    # Pass tuples for cache hashing
     downloaded_stock_data = fetch_stock_data_from_yfinance(tuple(tickers), fetch_start_date, fetch_end_date)
 
 if not downloaded_stock_data:
     st.warning("No stock data could be downloaded from yfinance. Results might be incomplete or empty.")
-    # Don't stop yet, analyze_stocks_and_sectors should handle empty dict gracefully
-    # and df_all_results will be empty, triggering the later warning.
+    # Fall through to analysis, which will likely result in df_all_results being empty
 
 with st.spinner("⚙️ Processing data and identifying setups..."):
     df_all_results, sector_perf_avg_results = analyze_stocks_and_sectors(
@@ -263,7 +237,7 @@ selected_sectors = st.sidebar.multiselect(
     default=top_5_sector_names
 )
 
-setup_options = sorted(list(df_all_results['Setup'].unique())) # Dynamic from results
+setup_options = sorted(list(df_all_results['Setup'].unique()))
 selected_setups = st.sidebar.multiselect("Select Setup Type(s)", options=setup_options, default=setup_options)
 
 volume_spike_filter = st.sidebar.checkbox("Show only Volume Spike Stocks", value=False)
@@ -300,29 +274,22 @@ st.markdown(f"### 📈 Filtered Stock Setups ({len(df_filtered)} stocks found)")
 if df_filtered.empty:
     st.info("No stocks found matching the selected filters.")
 else:
-    # Columns for display, Ticker will be index
     display_cols_order = ['Sector', 'Price', 'Return_1D', 'Return_1W', 'Return_1M', 
                           'Setup', 'Vol_Spike', 'Near_52W_High', 'Volume (M)', 'RSI']
     
-    # Ensure all display_cols exist in df_filtered to prevent KeyError
     cols_to_show_in_df = [col for col in display_cols_order if col in df_filtered.columns]
-    
-    # Set Ticker as index for sticky behavior and select columns
     df_display = df_filtered.set_index('Ticker')[cols_to_show_in_df].copy()
 
-
-    # Apply icons and colors using pandas Styler
-    def highlight_setup_and_vol_spike(row_series): # row_series is a Series (a single row)
-        # Create a Series of empty strings with the same index as the row
+    def highlight_setup_and_vol_spike(row_series):
         styles = pd.Series([''] * len(row_series), index=row_series.index)
         if 'Setup' in row_series.index:
             if row_series['Setup'] == "Breakout":
-                styles.loc['Setup'] = 'background-color: #a6d96a;' # greenish
+                styles.loc['Setup'] = 'background-color: #a6d96a;'
             elif row_series['Setup'] == "Retest":
-                styles.loc['Setup'] = 'background-color: #fdae61;' # orange
+                styles.loc['Setup'] = 'background-color: #fdae61;'
         
-        if 'Vol_Spike' in row_series.index and row_series['Vol_Spike']: # Check boolean directly
-            styles.loc['Vol_Spike'] = 'background-color: #fee08b;' # yellowish
+        if 'Vol_Spike' in row_series.index and row_series['Vol_Spike']:
+            styles.loc['Vol_Spike'] = 'background-color: #fee08b;'
         return styles
 
     styler = df_display.style.format({
@@ -334,7 +301,6 @@ else:
         'RSI': "{:.2f}"
     }, na_rep="-")
 
-    # Icon formatter only for 'Setup' column
     def setup_icon_formatter(val):
         if val == "Breakout": return f"📈 {val}"
         elif val == "Retest": return f"🔁 {val}"
@@ -343,14 +309,13 @@ else:
     if 'Setup' in df_display.columns:
         styler = styler.format({'Setup': setup_icon_formatter})
 
-    # Apply row-wise coloring
     styler = styler.apply(highlight_setup_and_vol_spike, axis=1)
     
-    # Adjust height dynamically based on number of rows
-    df_height = min((len(df_display) + 1) * 35 + 3, 600) # Max height 600px
+    df_height = min((len(df_display) + 1) * 35 + 3, 600)
     st.dataframe(styler, use_container_width=True, height=df_height)
 
-    csv = df_filtered.to_csv(index=True).encode('utf-8') # index=True because Ticker is now index
+    # For CSV download, use the original df_filtered before setting index to keep Ticker as a column
+    csv = df_filtered.to_csv(index=False).encode('utf-8') 
     st.download_button(
         label="📥 Download Filtered Data as CSV",
         data=csv,
