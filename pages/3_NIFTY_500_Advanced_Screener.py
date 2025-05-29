@@ -37,12 +37,12 @@ with st.expander("🧠 **Screening Criteria Used (Simplified)**", expanded=True)
         - Stock must belong to one of the top 5 performing sectors.
         - **Basic EMA Trend**: Close > 50 EMA.
         - **Relative Volume (RVOL)**: Current Volume / 20-Day Avg Volume > 1.0 (volume is at least average).
-    - **Sorting**: Primarily by Volume Spike (Current Volume > 1.5 × 20-Day Avg Volume), then by 1M Return.
+    - **Sorting**: Primarily by Volume Spike (Current Volume > 1.5 × 20-Day Avg Volume; displayed as True/False), then by 1M Return.
     - **Display & Features**:
-        - Results table color-coded by setup type.
+        - Results table color-coded by setup type. All numerical values rounded to 2 decimal places.
         - Data export to Excel enabled.
     - **Displayed Metrics**:
-        - Ticker, Sector, Price, Setup Type, Returns (1D, 1W, 1M), RVOL, Volume Spike, Near 52W High, Volume (M).
+        - Ticker, Sector, Price, Setup Type, Returns (1D, 1W, 1M), RVOL, Volume Spike (True/False), Near 52W High, Volume (M).
     """)
 
 @st.cache_data(ttl=timedelta(hours=1), show_spinner="Fetching and processing NIFTY 500 data...")
@@ -62,14 +62,14 @@ def run_simplified_screening_process(today_iso_format_utc):
         return pd.DataFrame(), {}
 
     end_date_dt = datetime.fromisoformat(today_iso_format_utc.replace('Z', '+00:00'))
-    start_date_dt = end_date_dt - timedelta(days=300) # Reduced buffer slightly, 252 for 52W high is enough
+    start_date_dt = end_date_dt - timedelta(days=300)
 
     stock_data = yf.download(tickers, start=start_date_dt, end=end_date_dt, interval='1d',
                              group_by='ticker', auto_adjust=False, progress=False, timeout=60)
 
     results = []
     sector_returns_collector = {}
-    min_data_length = 60 # Sufficient for 50EMA, 20D High, 1M return
+    min_data_length = 60
 
     for ticker in tickers:
         try:
@@ -79,22 +79,21 @@ def run_simplified_screening_process(today_iso_format_utc):
             df = stock_data[ticker].copy()
             df.dropna(subset=['Adj Close', 'High', 'Low', 'Open', 'Volume'], inplace=True)
 
-            if len(df) < min_data_length: # Ensure enough data for basic calcs
+            if len(df) < min_data_length:
                 continue
 
             df['20EMA'] = df['Adj Close'].ewm(span=20, adjust=False).mean()
             df['50EMA'] = df['Adj Close'].ewm(span=50, adjust=False).mean()
             df['20D_High'] = df['High'].rolling(window=20).max()
-            df['52W_High'] = df['High'].rolling(window=252, min_periods=20).max() # Allow if less than 252 but at least 20
+            df['52W_High'] = df['High'].rolling(window=252, min_periods=20).max()
             df['Avg_Vol_20D'] = df['Volume'].rolling(window=20).mean()
 
-            required_cols_check = ['20EMA', '50EMA', '20D_High', 'Avg_Vol_20D'] # 52W_High can be NaN initially
+            required_cols_check = ['20EMA', '50EMA', '20D_High', 'Avg_Vol_20D']
             if df[required_cols_check].iloc[-1].isnull().any():
                 continue
 
             latest = df.iloc[-1]
             
-            # Handle return calculations robustly
             prev_day = df.iloc[-2] if len(df) >= 2 else latest
             prev_week = df.iloc[-6] if len(df) >= 6 else latest
             month_ago = df.iloc[-22] if len(df) >= 22 else latest
@@ -113,7 +112,7 @@ def run_simplified_screening_process(today_iso_format_utc):
             rvol = 0.0
             if pd.notna(latest['Avg_Vol_20D']) and latest['Avg_Vol_20D'] > 0:
                 rvol = latest['Volume'] / latest['Avg_Vol_20D']
-            vol_spike = rvol > 1.5
+            vol_spike = bool(rvol > 1.5) # Ensure it's a Python boolean
 
             ema_trend_ok = latest['Adj Close'] > latest['50EMA']
             
@@ -134,22 +133,27 @@ def run_simplified_screening_process(today_iso_format_utc):
             elif is_pullback_20ema:
                 setup = "Pullback"
 
-            near_52w_high = pd.notna(latest['52W_High']) and latest['Adj Close'] >= 0.95 * latest['52W_High']
+            near_52w_high = bool(pd.notna(latest['52W_High']) and latest['Adj Close'] >= 0.95 * latest['52W_High']) # Python boolean
 
             results.append({
-                'Ticker': ticker, 'Sector': sector, 'Price': round(latest['Adj Close'], 2),
-                'Return_1D': round(return_1d, 2), 'Return_1W': round(return_1w, 2), 'Return_1M': round(return_1m, 2),
+                'Ticker': ticker, 'Sector': sector, 
+                'Price': round(latest['Adj Close'], 2),
+                'Return_1D': round(return_1d, 2), 
+                'Return_1W': round(return_1w, 2), 
+                'Return_1M': round(return_1m, 2),
                 'Setup': setup,
                 'RVOL': round(rvol, 2),
-                'Volume (M)': round(latest['Volume'] / 1e6, 1), 'Vol_Spike': vol_spike,
-                'Near_52W_High': near_52w_high,
-                '50EMA': round(latest['50EMA'], 2), '20D_High': round(latest['20D_High'], 2),
+                'Volume (M)': round(latest['Volume'] / 1e6, 2), # Changed to 2 decimal places
+                'Vol_Spike': vol_spike, # Already a boolean
+                'Near_52W_High': near_52w_high, # Already a boolean
+                '50EMA': round(latest['50EMA'], 2), 
+                '20D_High': round(latest['20D_High'], 2),
                 '52W_High': round(latest['52W_High'], 2) if pd.notna(latest['52W_High']) else 'N/A',
-                '_filter_rvol_ok': (rvol > 1.0), # Simplified RVOL filter
+                '_filter_rvol_ok': (rvol > 1.0),
                 '_filter_ema_trend_ok': ema_trend_ok
             })
         except Exception as e:
-            # st.sidebar.warning(f"Error processing {ticker}: {str(e)}") # For debugging
+            # st.sidebar.warning(f"Error processing {ticker}: {str(e)}")
             continue
 
     df_all = pd.DataFrame(results)
@@ -176,20 +180,19 @@ if sector_performance_avg:
     if top_sectors_list:
         cols = st.columns(len(top_sectors_list))
         for i, (name, perf) in enumerate(top_sectors_list):
-            cols[i].metric(label=name, value=f"{perf:.2f} %")
+            cols[i].metric(label=name, value=f"{perf:.2f} %") # Sector perf already 2 decimals
     else:
         st.info("Not enough data to rank sectors.")
 else:
     st.warning("No sector performance data available.")
 
-# Apply simplified filters
 df_filtered = df_all_results[
     (df_all_results['Sector'].isin(top_5_sector_names)) &
     (df_all_results['Setup'].isin(['Breakout', 'Retest', 'Pullback'])) &
     (df_all_results['_filter_rvol_ok']) &
     (df_all_results['_filter_ema_trend_ok'])
 ]
-df_filtered = df_filtered.sort_values(by=['Vol_Spike', 'Return_1M'], ascending=[False, False]) # Keep sorting
+df_filtered = df_filtered.sort_values(by=['Vol_Spike', 'Return_1M'], ascending=[False, False])
 
 st.markdown("### 📈 Filtered Stock Setups in Leading Sectors")
 
@@ -203,14 +206,22 @@ if df_filtered.empty:
     st.info("No stocks found matching all screening criteria. Try again later or check data sources if persistent.")
 else:
     display_cols = ['Ticker', 'Sector', 'Price', 'Setup', 'Return_1D', 'Return_1W', 'Return_1M',
-                    'RVOL', 'Vol_Spike', 'Near_52W_High', 'Volume (M)'] # Adjusted columns
+                    'RVOL', 'Vol_Spike', 'Near_52W_High', 'Volume (M)']
     df_display = df_filtered[display_cols].head(30).copy()
     
-    df_styled = df_display.style.applymap(highlight_setup_cell, subset=['Setup'])
+    # Format numerical columns to 2 decimal places for display where appropriate
+    # Note: Price, Returns, RVOL, Volume (M) are already rounded during DataFrame creation.
+    # This is more for ensuring the Styler object respects it if needed, but usually it does.
+    float_cols_to_format = ['Price', 'Return_1D', 'Return_1W', 'Return_1M', 'RVOL', 'Volume (M)']
+    format_dict = {col: '{:.2f}' for col in float_cols_to_format}
+    
+    df_styled = df_display.style.applymap(highlight_setup_cell, subset=['Setup'])\
+                              .format(format_dict, na_rep='N/A') # Apply number formatting
+
     st.dataframe(df_styled, use_container_width=True, hide_index=True)
 
     excel_export_df = df_filtered[display_cols].copy()
-    excel_data = to_excel(excel_export_df)
+    excel_data = to_excel(excel_export_df) # to_excel uses the already rounded df
     st.download_button(
         label="📥 Download Filtered Results as Excel",
         data=excel_data,
