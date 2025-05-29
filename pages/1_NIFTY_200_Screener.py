@@ -16,11 +16,13 @@ st.markdown("Identifies breakout or retest setups in top-performing sectors base
 with st.expander("🧠 **Screening Criteria Used**", expanded=True):
     st.markdown("""
     - **Universe**: NIFTY 200 stocks
-    - **Top Sectors Selection**: Defaults to the top 5 performing sectors based on average **1-week return** (user can select other sectors).
+    - **Top Sectors**: Stocks shown are from the **top 5 performing sectors** based on average **1-week return**.
     - **Setup Detection (Stricter)**:
-        - 📈 **Breakout**: Close ≥ **99%** of 20-day high (previously 98%)
-        - 🔁 **Retest**: Close ≥ 50 EMA and ≤ **102%** of 50 EMA (previously 103%)
-    - **Filters**:
+        - 📈 **Breakout**: Close ≥ **99%** of 20-day high
+        - 🔁 **Retest**: Close ≥ 50 EMA and ≤ **102%** of 50 EMA
+    - **Filters Applied Programmatically**:
+        - Stocks must belong to one of the top 5 performing sectors.
+    - **Displayed Information (Not User Filters)**:
         - Volume Spike: Volume > 1.5× average 20-day volume (used for sorting, True values at top)
         - Proximity to 52W High is highlighted (shown as a column, Close ≥ 95% of 52W High)
     - **Displayed Metrics**:
@@ -102,7 +104,6 @@ def analyze_stocks_and_sectors(downloaded_stock_data, tickers_tuple, sector_map_
             df['52W_High'] = df['High'].rolling(window=252, min_periods=1).max()
             df['Avg_Vol_20D'] = df['Volume'].rolling(window=20, min_periods=1).mean()
 
-            # --- Revised and Simplified RSI Calculation ---
             delta = df['Adj Close'].diff()
             avg_gain = (delta.where(delta > 0, 0)).rolling(window=14, min_periods=1).mean().iloc[-1]
             avg_loss = (-delta.where(delta < 0, 0)).rolling(window=14, min_periods=1).mean().iloc[-1]
@@ -113,9 +114,7 @@ def analyze_stocks_and_sectors(downloaded_stock_data, tickers_tuple, sector_map_
             if pd.notna(avg_gain) and pd.notna(avg_loss):
                 if avg_loss == 0:
                     if avg_gain > 0:
-                        rs_val = np.inf  # Results in RSI 100
-                    # If avg_gain is also 0, rs_val remains NaN, latest_rsi remains NaN.
-                    # (Some conventions might set RS=1 for RSI=50, but NaN if undefined is safer)
+                        rs_val = np.inf
                 else:
                     rs_val = avg_gain / avg_loss
             
@@ -125,12 +124,9 @@ def analyze_stocks_and_sectors(downloaded_stock_data, tickers_tuple, sector_map_
                 else:
                     latest_rsi = 100 - (100 / (1 + rs_val))
             
-            # Assign the calculated RSI to the last row of the DataFrame for this stock
-            # Ensure 'RSI' column exists or create it
             if 'RSI' not in df.columns:
                 df['RSI'] = np.nan 
             df.loc[df.index[-1], 'RSI'] = latest_rsi
-            # --- End of Revised RSI Calculation ---
 
             if df[['50EMA', '20D_High', 'Avg_Vol_20D']].iloc[-1].isnull().any():
                 continue
@@ -212,7 +208,6 @@ with st.spinner("📥 Fetching market data from yfinance... (this may take a few
 
 if not downloaded_stock_data:
     st.warning("No stock data could be downloaded from yfinance. Results might be incomplete or empty.")
-    # Fall through to analysis, which will likely result in df_all_results being empty
 
 with st.spinner("⚙️ Processing data and identifying setups..."):
     df_all_results, sector_perf_avg_results = analyze_stocks_and_sectors(
@@ -225,35 +220,11 @@ if df_all_results.empty:
 
 st.markdown(f"Data processed on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (Market data up to {current_day_iso} or latest available)")
 
-# Sidebar filters
-st.sidebar.header("Filter Stocks")
+# --- No Sidebar Filters, Programmatic Filtering by Top 5 Sectors ---
 sorted_sector_perf = sorted(sector_perf_avg_results.items(), key=lambda x: x[1], reverse=True)
-all_available_sectors = sorted(list(df_all_results['Sector'].unique()))
-top_5_sector_names = [s[0] for s in sorted_sector_perf[:5] if s[0] in all_available_sectors]
+top_5_sector_names = [s[0] for s in sorted_sector_perf[:5]] # Get names of top 5 sectors
 
-selected_sectors = st.sidebar.multiselect(
-    "Select Sectors (defaults to top 5 performing)",
-    options=all_available_sectors,
-    default=top_5_sector_names
-)
-
-setup_options = sorted(list(df_all_results['Setup'].unique()))
-selected_setups = st.sidebar.multiselect("Select Setup Type(s)", options=setup_options, default=setup_options)
-
-volume_spike_filter = st.sidebar.checkbox("Show only Volume Spike Stocks", value=False)
-near_52w_high_filter = st.sidebar.checkbox("Show only Near 52W High Stocks", value=False)
-
-# Filtering data
-df_filtered = df_all_results.copy()
-if selected_sectors:
-    df_filtered = df_filtered[df_filtered['Sector'].isin(selected_sectors)]
-if selected_setups:
-    df_filtered = df_filtered[df_filtered['Setup'].isin(selected_setups)]
-if volume_spike_filter:
-    df_filtered = df_filtered[df_filtered['Vol_Spike'] == True]
-if near_52w_high_filter:
-    df_filtered = df_filtered[df_filtered['Near_52W_High'] == True]
-
+df_filtered = df_all_results[df_all_results['Sector'].isin(top_5_sector_names)]
 df_filtered = df_filtered.sort_values(by=['Vol_Spike', 'Return_1M'], ascending=[False, False])
 
 st.markdown("### 🏆 Top Performing Sectors (1W Avg Return)")
@@ -268,11 +239,10 @@ else:
     else:
         st.info("Not enough sector data to display top performers.")
 
-
-st.markdown(f"### 📈 Filtered Stock Setups ({len(df_filtered)} stocks found)")
+st.markdown(f"### 📈 Stock Setups from Top Performing Sectors ({len(df_filtered)} stocks found)")
 
 if df_filtered.empty:
-    st.info("No stocks found matching the selected filters.")
+    st.info("No stocks found from the top performing sectors matching the setup criteria.")
 else:
     display_cols_order = ['Sector', 'Price', 'Return_1D', 'Return_1W', 'Return_1M', 
                           'Setup', 'Vol_Spike', 'Near_52W_High', 'Volume (M)', 'RSI']
@@ -314,19 +284,18 @@ else:
     df_height = min((len(df_display) + 1) * 35 + 3, 600)
     st.dataframe(styler, use_container_width=True, height=df_height)
 
-    # For CSV download, use the original df_filtered before setting index to keep Ticker as a column
     csv = df_filtered.to_csv(index=False).encode('utf-8') 
     st.download_button(
-        label="📥 Download Filtered Data as CSV",
+        label="📥 Download Screened Data as CSV", # Updated label
         data=csv,
-        file_name=f"nifty200_momentum_filtered_{datetime.today().strftime('%Y%m%d')}.csv",
+        file_name=f"nifty200_top_sectors_screened_{datetime.today().strftime('%Y%m%d')}.csv", # Updated filename
         mime='text/csv'
     )
 
 # RSI Distribution chart
-st.markdown("### 📊 RSI Distribution for Filtered Stocks")
+st.markdown("### 📊 RSI Distribution for Screened Stocks") # Updated title
 if df_filtered.empty or 'RSI' not in df_filtered.columns or df_filtered['RSI'].dropna().empty:
-    st.info("No data available for RSI distribution (no stocks filtered or RSI data missing).")
+    st.info("No data available for RSI distribution (no stocks screened or RSI data missing).")
 else:
     fig, ax = plt.subplots(figsize=(10, 4))
     sns.histplot(df_filtered['RSI'].dropna(), bins=20, kde=True, color='purple', ax=ax)
@@ -334,7 +303,7 @@ else:
     ax.axvline(30, color='green', linestyle='--', linewidth=1, label='Oversold (30)')
     ax.set_xlabel("RSI")
     ax.set_ylabel("Number of Stocks")
-    ax.set_title("RSI Histogram of Filtered Stocks")
+    ax.set_title("RSI Histogram of Screened Stocks") # Updated title
     ax.legend()
     st.pyplot(fig)
 
