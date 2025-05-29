@@ -28,16 +28,16 @@ with st.expander("🧠 **Screening Criteria Used**", expanded=True):
         - Volume Spike: Volume > 1.5× average 20-day volume (used for sorting, True values at top)
         - Proximity to 52W High is highlighted (shown as a column, Close ≥ 95% of 52W High)
     - **Displayed Metrics**:
-        - Price, 1D/1W/1M Returns (all to 2 decimal places), Volume, Setup Type, Near 52W High, Volume Spike, RSI
+        - Price, 1D/1W/1M Returns, Volume (M), RSI (all numeric to 2 decimal places), Setup Type, Near 52W High, Volume Spike
     """)
 
 # --- Refactored Data Fetching and Processing Functions ---
 
 @st.cache_data(ttl=timedelta(days=1), show_spinner=False)
-def load_nifty_list_and_map(list_name="nifty500"): # Added parameter for list name
+def load_nifty_list_and_map(list_name="nifty500"):
     if list_name == "nifty500":
         csv_url = "https://raw.githubusercontent.com/stockscope/Momentum_Sector_Breakout_Screener/main/ind_nifty500list.csv"
-    elif list_name == "nifty200": # Just in case, though this script is for N500
+    elif list_name == "nifty200":
         csv_url = "https://raw.githubusercontent.com/stockscope/Momentum_Sector_Breakout_Screener/main/ind_nifty200list.csv"
     else:
         st.error(f"Unknown stock list: {list_name}")
@@ -73,7 +73,7 @@ def fetch_stock_data_from_yfinance(tickers_tuple, start_date_str, end_date_str):
         group_by='ticker', 
         auto_adjust=False, 
         progress=False,
-        timeout=60 # Increased timeout for potentially larger N500 download
+        timeout=60 
     )
     
     stock_data_processed = {}
@@ -132,7 +132,7 @@ def analyze_stocks_and_sectors(downloaded_stock_data, tickers_tuple, sector_map_
             if 'RSI' not in df.columns: df['RSI'] = np.nan 
             df.loc[df.index[-1], 'RSI'] = latest_rsi
 
-            if df[['50EMA', '20D_High', 'Avg_Vol_20D']].iloc[-1].isnull().any(): # 52W_High can be NaN
+            if df[['50EMA', '20D_High', 'Avg_Vol_20D']].iloc[-1].isnull().any():
                 continue
 
             latest = df.iloc[-1]
@@ -181,12 +181,13 @@ def analyze_stocks_and_sectors(downloaded_stock_data, tickers_tuple, sector_map_
                 '52W_High': round(latest['52W_High'], 2) if pd.notna(latest['52W_High']) else np.nan,
                 'Near_52W_High': near_52w_high_info,
                 'Setup': setup,
-                'Volume (M)': round(latest['Volume'] / 1e6, 1) if pd.notna(latest['Volume']) else np.nan,
-                'Avg_Vol_20D (M)': round(latest['Avg_Vol_20D'] / 1e6, 1) if pd.notna(latest['Avg_Vol_20D']) else np.nan,
+                'Volume (M)': round(latest['Volume'] / 1e6, 2) if pd.notna(latest['Volume']) else np.nan, # Corrected to 2 decimals
+                'Avg_Vol_20D (M)': round(latest['Avg_Vol_20D'] / 1e6, 2) if pd.notna(latest['Avg_Vol_20D']) else np.nan, # Corrected to 2 decimals
                 'Vol_Spike': vol_spike,
                 'RSI': round(latest['RSI'], 2) if pd.notna(latest['RSI']) else np.nan
             })
         except Exception:
+            # st.sidebar.warning(f"Error processing {ticker}: {e}") # Uncomment for debugging
             continue
 
     df_all = pd.DataFrame(results)
@@ -208,7 +209,7 @@ fetch_end_date = current_day_iso
 fetch_start_date = (datetime.today() - timedelta(days=400)).strftime('%Y-%m-%d')
 
 with st.spinner("📜 Loading NIFTY 500 list..."):
-    tickers, sector_map, _ = load_nifty_list_and_map(list_name="nifty500") # Specify NIFTY 500 list
+    tickers, sector_map, _ = load_nifty_list_and_map(list_name="nifty500")
 
 if not tickers:
     st.error("NIFTY 500 stock list could not be loaded. Cannot proceed.")
@@ -282,7 +283,7 @@ else:
         'Return_1D': "{:.2f} %",
         'Return_1W': "{:.2f} %",
         'Return_1M': "{:.2f} %",
-        'Volume (M)': "{:.1f}",
+        'Volume (M)': "{:.2f}", # Styler format also updated for Volume (M)
         'RSI': "{:.2f}"
     }, na_rep="-")
 
@@ -297,7 +298,7 @@ else:
 
     styler = styler.apply(highlight_setup_and_vol_spike, axis=1)
     
-    df_height = min((len(df_display) + 1) * 35 + 3, 600) # Max height 600px
+    df_height = min((len(df_display) + 1) * 35 + 3, 600) 
     st.dataframe(styler, use_container_width=True, height=df_height)
 
     csv = df_filtered.to_csv(index=False).encode('utf-8') 
