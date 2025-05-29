@@ -9,12 +9,12 @@ import matplotlib
 matplotlib.rcParams['axes.unicode_minus'] = False
 
 st.set_page_config(layout="wide")
-st.title("📊 Momentum Sector Breakout Screener (NIFTY 500)")
+st.title("📊 Momentum Sector Breakout Screener (NIFTY 200)")
 st.markdown("Identifies breakout or retest setups in top-performing sectors based on trend, volume, and returns.")
 
 with st.expander("🧠 **Screening Criteria Used**", expanded=True):
     st.markdown("""
-    - **Universe**: NIFTY 500 stocks
+    - **Universe**: NIFTY 200 stocks
     - **Top Sectors**: Based on average **1-week return**
     - **Setup Detection**:
         - 📈 **Breakout**: Close ≥ 98% of 20-day high
@@ -30,27 +30,26 @@ with st.expander("🧠 **Screening Criteria Used**", expanded=True):
 # Wrap the screening process with spinner
 with st.spinner("🔍 Screening in progress... please wait"):
 
-    # Load CSV
-    csv_url = "https://raw.githubusercontent.com/stockscope/Momentum_Sector_Breakout_Screener/main/ind_nifty500list.csv"
-    df_nifty500 = pd.read_csv(csv_url)
-    df_nifty500.columns = df_nifty500.columns.str.strip()
-    df_nifty500 = df_nifty500[~df_nifty500['Symbol'].str.contains("DUMMY", na=False)]
-    df_nifty500['Symbol'] = df_nifty500['Symbol'].str.strip()
-    df_nifty500['Ticker'] = df_nifty500['Symbol'] + ".NS"
+    # Load NIFTY 200 CSV
+    csv_url = "https://raw.githubusercontent.com/stockscope/Momentum_Sector_Breakout_Screener/main/ind_nifty200list.csv"
+    df_nifty200 = pd.read_csv(csv_url)
+    df_nifty200.columns = df_nifty200.columns.str.strip()
+    df_nifty200 = df_nifty200[~df_nifty200['Symbol'].str.contains("DUMMY", na=False)]
+    df_nifty200['Symbol'] = df_nifty200['Symbol'].str.strip()
+    df_nifty200['Ticker'] = df_nifty200['Symbol'] + ".NS"
 
-    # Ticker list and map
-    tickers = df_nifty500['Ticker'].tolist()
-    sector_map = dict(zip(df_nifty500['Ticker'], df_nifty500['Industry']))
+    tickers = df_nifty200['Ticker'].tolist()
+    sector_map = dict(zip(df_nifty200['Ticker'], df_nifty200['Industry']))
 
-    # Download prices
+    # Download historical data
     end_date = datetime.today()
     start_date = end_date - timedelta(days=365)
-    data = yf.download(tickers, start=start_date, end=end_date, interval='1d', group_by='ticker', auto_adjust=False, progress=False)
+    data = yf.download(tickers, start=start_date, end=end_date, interval='1d',
+                       group_by='ticker', auto_adjust=False, progress=False)
 
     results = []
     sector_perf = {}
 
-    # Analyze each ticker
     for ticker in tickers:
         try:
             df = data[ticker].copy()
@@ -106,22 +105,29 @@ with st.spinner("🔍 Screening in progress... please wait"):
 
     df_all = pd.DataFrame(results)
 
-    # Sector ranking
-    sector_perf_avg = {k: sum(v)/len(v) for k, v in sector_perf.items()}
+    # Compute sector performance
+    sector_perf_avg = {k: sum(v) / len(v) for k, v in sector_perf.items()}
     top_sectors = sorted(sector_perf_avg.items(), key=lambda x: x[1], reverse=True)[:5]
     top_sector_names = [s[0] for s in top_sectors]
 
+# Show top sectors
 st.markdown("### 🏆 Top Performing Sectors (1W Avg Return)")
 cols = st.columns(len(top_sectors))
 for i, (name, perf) in enumerate(top_sectors):
     cols[i].metric(label=name, value=f"{perf:.2f} %")
 
-df_filtered = df_all[(df_all['Sector'].isin(top_sector_names)) & (df_all['Setup'].isin(['Breakout', 'Retest']))]
-df_filtered = df_filtered.sort_values(by=['Vol_Spike', 'Return_1M'], ascending=[False, False])
+# Filter results
+df_filtered = df_all[
+    (df_all['Sector'].isin(top_sector_names)) &
+    (df_all['Setup'].isin(['Breakout', 'Retest']))
+].sort_values(by=['Vol_Spike', 'Return_1M'], ascending=[False, False])
 
+# Show table
 st.markdown("### 📈 Top Stock Setups in Leading Sectors")
-st.dataframe(df_filtered[['Ticker', 'Sector', 'Price', 'Return_1W', 'Return_1M', 'Setup', 'Vol_Spike']].head(20), use_container_width=True)
+st.dataframe(df_filtered[['Ticker', 'Sector', 'Price', 'Return_1W', 'Return_1M', 'Setup', 'Vol_Spike']].head(20),
+             use_container_width=True)
 
+# Histogram plot
 st.markdown("### 📊 Return Distribution of Selected Stocks")
 fig, ax = plt.subplots(figsize=(12, 5))
 sns.histplot(data=df_filtered, x='Return_1W', kde=True, color='blue', label='1W Return')
