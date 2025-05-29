@@ -26,4 +26,4 @@ st.title("📊 Momentum Screener Dashboard")
 st.markdown("Use the sidebar to choose between NIFTY 200 and NIFTY 500 screeners.")
 
 # 📱 Extra hint for mobile users
-st.info("📱 On mobile? Tap the menu icon (☰ or ⬅️) in the top-left if you don't see the options.")
+st.info("Tap the menu icon (☰ or ⬅️) in the top-left if you don't see the options.")
