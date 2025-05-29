@@ -1,8 +1,13 @@
-streamlit
-yfinance
-pandas
-matplotlib
-seaborn
-openpyxl         # for Excel export
-ta               # for RSI, EMAs (optional: use only if you're using ta-lib-style indicators)
-numpy
+streamlit>=1.33
+yfinance>=0.2.37
+pandas>=2.2.2
+matplotlib>=3.8.4
+seaborn>=0.13.2
+openpyxl>=3.1.2         # For Excel export
+ta>=0.10.2              # Technical analysis indicators like RSI, EMA
+numpy>=1.26.4
+scipy>=1.13.0           # Useful for numerical ops (optional but recommended)
+pytz>=2024.1            # For timezone handling (used with datetime.now(timezone.utc))
+plotly>=5.21.0          # Optional: for interactive charts
+requests>=2.32.2        # Optional: future API/data integration
+tqdm>=4.66.4            # Optional: progress bar in loops (debug/dev use)
