@@ -1,23 +1,21 @@
 # Home.py
 import streamlit as st
 
-# Page Configuration
+# Page Configuration for Home page - sidebar initially collapsed
 st.set_page_config(
-    page_title="📈 Stock Screener Hub",
-    page_icon="🔍",  # Favicon
-    layout="wide",  # Use wide layout for better content spacing
-    initial_sidebar_state="expanded" # Keep sidebar expanded by default
+    page_title="StockScopePro Hub",
+    page_icon="🔍",
+    layout="wide",
+    initial_sidebar_state="collapsed" # Collapsed on the home page
 )
 
-# --- Custom CSS (from your original, with minor tweaks for clarity if any) ---
-# This CSS attempts to keep the sidebar visible and expanded on mobile.
-# Note: This can be aggressive on small screens. Streamlit's default responsive
-# behavior usually hides it behind a hamburger menu.
+# --- Custom CSS ---
+# Removed the aggressive mobile sidebar CSS as initial_sidebar_state handles it better
 st.markdown("""
     <style>
-        /* Sidebar styling */
+        /* Sidebar styling (will apply when it's visible on other pages or if user opens it) */
         [data-testid="stSidebar"] {
-            background-color: #f0f2f6; /* Light grey background for sidebar */
+            background-color: #f0f2f6; 
         }
         
         /* Main content area styling for better readability */
@@ -30,140 +28,121 @@ st.markdown("""
 
         /* Title styling */
         h1 {
-            color: #2c3e50; /* Dark blue for title */
+            color: #2c3e50; 
+            text-align: center;
+        }
+        h2, h3 { /* For section headers */
+            color: #2980b9; 
         }
 
-        /* Card-like styling for links (optional) */
+        /* Card-like styling for links */
         .card {
             background-color: white;
             padding: 1.5rem;
             border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            margin-bottom: 1rem;
-            transition: transform 0.2s;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 1.5rem;
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            border: 1px solid #e0e0e0;
+            display: block; /* Make the whole card area behave like a block for the link */
         }
         .card:hover {
             transform: translateY(-5px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
         }
-        .card h3 {
+        .card h3 { 
             margin-top: 0;
-            color: #3498db; /* Blue for card titles */
+            color: #3498db; 
+            margin-bottom: 0.75rem;
         }
         .card p {
             color: #555;
             font-size: 0.95rem;
+            line-height: 1.6;
         }
-        .card a {
+        .card a { /* Style for the link itself if needed, but we made the div clickable */
             text-decoration: none;
-            color: inherit; /* Inherit color from parent for the whole card to be clickable */
+            color: inherit; 
         }
-
+        hr {
+            border-top: 1px solid #eee;
+            margin-top: 2rem;
+            margin-bottom: 2rem;
+        }
     </style>
 """, unsafe_allow_html=True)
 
 
 # --- Page Content ---
-
-# Header Section
-st.image("https://img.freepik.com/free-vector/stock-market-uptrend-arrow-chart-background_1017-39203.jpg?w=1060&t=st=1700000000~exp=1700000600~hmac=examplehash", use_column_width=True) # Replace with a real, good quality, royalty-free image URL or local path
-st.title("📈 Welcome to the Stock Screener Hub!")
+st.title("📈 Welcome to StockScopePro!")
 st.markdown("---")
 st.markdown(
     """
-    Discover potential investment opportunities in the Indian stock market using our specialized screeners. 
-    These tools are designed to help you identify stocks based on momentum, value, and trend criteria.
+    Your comprehensive hub for specialized stock screeners. 
+    Navigate through our tools to identify potential investment opportunities in the Indian stock market 
+    based on momentum, value, and trend criteria.
     """
 )
 st.markdown("---")
 
-
-# Navigation / Screener Links Section
 st.header("🛠️ Our Screeners")
-st.markdown("Select a screener from the sidebar or use the links below to get started:")
+st.markdown("Select a screener to begin your analysis:")
 
-# Using columns for a better layout of screener descriptions
 col1, col2 = st.columns(2)
 
+# Ensure your page paths are correct. For a multi-page app, these would be
+# relative to the 'pages' directory, e.g., "NIFTY_200_Screener" if the file is pages/NIFTY_200_Screener.py
+# Streamlit constructs the URLs based on these filenames.
+
 with col1:
-    st.markdown(
-        """
-        <a href="NIFTY_200_Screener" target="_self">
-            <div class="card">
-                <h3>📊 NIFTY 200 Momentum Screener</h3>
-                <p>Identifies breakout or retest setups in top-performing sectors within the NIFTY 200 universe based on trend, volume, and returns.</p>
-            </div>
-        </a>
-        """,
-        unsafe_allow_html=True
+    st.markdown( # Using st.page_link for cleaner navigation if Streamlit version >= 1.29
+        """<a href="NIFTY_200_Screener" target="_self"><div class="card">
+        <h3>📊 NIFTY 200 Momentum Screener</h3>
+        <p>Identifies breakout or retest setups in top-performing sectors within the NIFTY 200 universe.</p>
+        </div></a>""", unsafe_allow_html=True
     )
     st.markdown(
-        """
-        <a href="NIFTY_500_Value_Screener" target="_self"> # Assuming your value screener page is named this
-            <div class="card">
-                <h3>📈 NIFTY 500 Value & Trend Screener</h3>
-                <p>Scans the NIFTY 500 for stocks that appear reasonably valued and are exhibiting signs of a potential uptrend, suitable for various market conditions.</p>
-            </div>
-        </a>
-        """,
-        unsafe_allow_html=True
+        """<a href="NIFTY_500_Value_Screener" target="_self"><div class="card">
+        <h3>📈 NIFTY 500 Value & Trend Screener</h3>
+        <p>Scans the NIFTY 500 for stocks that appear reasonably valued and are exhibiting signs of a potential uptrend.</p>
+        </div></a>""", unsafe_allow_html=True
     )
 
 with col2:
     st.markdown(
-        """
-        <a href="NIFTY_500_Screener" target="_self">
-            <div class="card">
-                <h3>🚀 NIFTY 500 Momentum Screener</h3>
-                <p>A broader momentum scan focusing on breakout/retest setups within the NIFTY 500, similar to the NIFTY 200 version but with a larger stock pool.</p>
-            </div>
-        </a>
-        """,
-        unsafe_allow_html=True
+        """<a href="NIFTY_500_Screener" target="_self"><div class="card">
+        <h3>🚀 NIFTY 500 Momentum Screener</h3>
+        <p>A broader momentum scan focusing on breakout/retest setups within the NIFTY 500 index.</p>
+        </div></a>""", unsafe_allow_html=True
     )
-    # Add more screeners here if you have them, e.g., an Advanced Screener
+    # Example for a fourth card if you add another screener
     # st.markdown(
-    #     """
-    #     <a href="Your_Other_Screener_Page_Name" target="_self">
-    #         <div class="card">
-    #             <h3>⚙️ Advanced Screener (Example)</h3>
-    #             <p>Description of your advanced screener...</p>
-    #         </div>
-    #     </a>
-    #     """,
-    #     unsafe_allow_html=True
+    #     """<a href="Some_Other_Screener" target="_self"><div class="card">
+    #     <h3>⚙️ Another Screener</h3>
+    #     <p>Description of the other screener.</p>
+    #     </div></a>""", unsafe_allow_html=True
     # )
 
-
 st.markdown("---")
-
-# How to Use Section
 st.subheader("💡 How to Use")
 st.markdown(
     """
-    1.  **Select a Screener:** Use the navigation links above or the sidebar menu (usually a `>` or `☰` icon on the top-left, especially on mobile) to choose your desired stock screener.
-    2.  **Review Criteria:** Each screener page details the specific criteria it uses for filtering stocks.
-    3.  **Analyze Results:** The screened stocks will be displayed in a table. You can review key metrics and download the data for further analysis.
+    1.  **Click on a Screener Card:** Choose one of the screeners listed above.
+    2.  **Sidebar Navigation (on Screener Pages):** Once on a screener page, the sidebar will appear, allowing you to switch between different screeners easily.
+    3.  **Understand Criteria:** Each screener page explains the specific criteria used for stock selection.
+    4.  **Analyze & Download:** Review the results table and download data for your own further research.
     """
 )
 
-# Disclaimer Section
 st.markdown("---")
 st.subheader("⚠️ Important Disclaimer")
 st.warning(
     """
-    The information provided by these screeners is for educational and informational purposes only and should not be considered financial advice. 
-    Stock market investments are subject to market risks. Always conduct your own thorough research (DYOR) and consult with a qualified financial advisor before making any investment decisions. 
-    Data is sourced from Yahoo Finance and may be subject to inaccuracies or delays.
+    StockScopePro provides tools for informational and educational purposes only. It should **not** be considered financial advice. 
+    Investing in the stock market involves risks, including the potential loss of principal. 
+    Always conduct your own thorough research (DYOR) and consult with a qualified financial advisor before making any investment decisions. 
+    Data is primarily sourced from Yahoo Finance and may be subject to inaccuracies or delays. We are not responsible for any trading or investment decisions based on the information provided by these tools.
     """
 )
-
-# Footer
 st.markdown("---")
-st.markdown("Happy Screening! ✨")
-
-# Note on st.page_link (if you upgrade Streamlit):
-# If your Streamlit version is 1.29 or higher, you can use st.page_link for cleaner navigation:
-# st.page_link("pages/1_NIFTY_200_Screener.py", label="NIFTY 200 Momentum Screener", icon="📊")
-# st.page_link("pages/2_NIFTY_500_Screener.py", label="NIFTY 500 Momentum Screener", icon="🚀")
-# st.page_link("pages/4_NIFTY_500_Value_Screener.py", label="NIFTY 500 Value & Trend Screener", icon="📈")
-# This requires your pages to be in a 'pages' subdirectory.
+st.markdown("<p style='text-align: center; color: grey;'>Happy Screening with StockScopePro! ✨</p>", unsafe_allow_html=True)
