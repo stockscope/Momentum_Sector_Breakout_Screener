@@ -3,6 +3,7 @@ import streamlit as st
 import os 
 from pathlib import Path 
 
+# Page Configuration for Home page - sidebar initially collapsed
 st.set_page_config(
     page_title="StockScopePro Hub",
     page_icon="🔍",
@@ -10,55 +11,104 @@ st.set_page_config(
     initial_sidebar_state="collapsed" 
 )
 
+# --- Custom CSS ---
 st.markdown("""
     <style>
-        /* ... Your CSS ... */
-        [data-testid="stSidebar"] { background-color: #f0f2f6; }
-        .main .block-container { padding: 1rem 2rem 2rem 2rem; } /* Adjusted top padding */
-        h1 { color: #2c3e50; text-align: center; margin-bottom: 0.5rem; }
-        .card { background-color: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 1.5rem; transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out; border: 1px solid #e0e0e0; display: block; height: 100%; }
-        .card:hover { transform: translateY(-5px); box-shadow: 0 6px 12px rgba(0,0,0,0.15); }
-        .card h3 { margin-top: 0; color: #3498db; margin-bottom: 0.75rem; font-size: 1.25rem; }
-        .card p { color: #555; font-size: 0.9rem; line-height: 1.5; }
-        .card a { text-decoration: none; color: inherit; }
-        hr { border-top: 1px solid #eee; margin: 1rem 0; } /* Simplified hr margin */
-        div[data-testid="stHorizontalBlock"] > div:first-child > div[data-testid="stVerticalBlock"] > div:first-child > div[data-testid="stVerticalBlock"] > div:first-child { margin-bottom: 0.5rem !important; }
-        div[data-testid="stHorizontalBlock"] > div:first-child > div[data-testid="stVerticalBlock"] > div:nth-child(2) > div > hr { margin-top: 0.5rem !important; margin-bottom: 1rem !important; }
+        [data-testid="stSidebar"] {
+            background-color: #f0f2f6; 
+        }
+        .main .block-container {
+            padding-top: 1rem; 
+            padding-bottom: 2rem;
+            padding-left: 2rem;
+            padding-right: 2rem;
+        }
+        h1 {
+            color: #2c3e50; 
+            text-align: center;
+            margin-bottom: 0.5rem; 
+        }
+        .card {
+            background-color: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 1.5rem;
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            border: 1px solid #e0e0e0;
+            display: block; 
+            height: 100%; 
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+        }
+        .card h3 { 
+            margin-top: 0;
+            color: #3498db; 
+            margin-bottom: 0.75rem;
+            font-size: 1.25rem; 
+        }
+        .card p {
+            color: #555;
+            font-size: 0.9rem; 
+            line-height: 1.5;
+        }
+        .card a { 
+            text-decoration: none;
+            color: inherit; 
+        }
+        hr {
+            border-top: 1px solid #eee;
+            margin-top: 1rem; 
+            margin-bottom: 1rem; 
+        }
+        /* Reduce space around the main title and first hr */
+        div[data-testid="stHorizontalBlock"] > div:first-child > div[data-testid="stVerticalBlock"] > div:first-child > div[data-testid="stVerticalBlock"] > div:first-child {
+            margin-bottom: 0.5rem !important;
+        }
+        div[data-testid="stHorizontalBlock"] > div:first-child > div[data-testid="stVerticalBlock"] > div:nth-child(2) > div > hr {
+            margin-top: 0.5rem !important;
+            margin-bottom: 1rem !important;
+        }
     </style>
 """, unsafe_allow_html=True)
 
+
+# --- Page Content ---
 st.title("📈 Welcome to StockScopePro!")
 st.markdown("---") 
 st.markdown("<p style='text-align:center; font-size: 1.1em;'>Select a screener to begin your analysis:</p>", unsafe_allow_html=True)
 
+
+# --- Dynamic Screener Listing ---
 current_script_dir = Path(__file__).parent
 PAGES_DIR = current_script_dir / "pages"
 
 def get_page_display_name_and_href(filename_path_obj):
-    filename_stem = filename_path_obj.stem # e.g., "1_NIFTY_200_Screener"
-    
+    filename_stem = filename_path_obj.stem 
     parts = filename_stem.split("_", 1)
     if len(parts) > 1 and parts[0].isdigit():
-        # For href, Streamlit might be using the name without the number prefix
         href_base = parts[1] 
         display_name_base = parts[1]
     else:
         href_base = filename_stem
         display_name_base = filename_stem
-    
     display_name = display_name_base.replace("_", " ").title()
-    return display_name, href_base # Return the base name for href
+    return display_name, href_base
 
-def get_page_description(href_base_name): # Now takes the href_base_name
+def get_page_description(href_base_name):
+    # IMPORTANT: Update keys to match base filenames (without number prefixes)
     custom_descriptions = {
         "NIFTY_200_Screener": "Identifies breakout or retest setups in top-performing sectors within the NIFTY 200 universe.",
         "NIFTY_500_Screener": "A broader momentum scan focusing on breakout/retest setups within the NIFTY 500 index.",
-        "NIFTY_500_Advanced_Screener": "Advanced filtering for in-depth analysis of NIFTY 500 stocks. (Update description!)",
+        "NIFTY_500_Advanced_Screener": "Advanced filtering options for in-depth analysis of NIFTY 500 stocks. (Update this description!)",
         "NIFTY_500_Value_Screener": "Scans the NIFTY 500 for stocks that appear reasonably valued and are exhibiting signs of an uptrend."
     }
     return custom_descriptions.get(href_base_name, "Explore this screener to find potential stock opportunities.")
 
 def get_page_icon(href_base_name):
+    # IMPORTANT: Update keys to match base filenames (without number prefixes)
     custom_icons = {
         "NIFTY_200_Screener": "📊", 
         "NIFTY_500_Screener": "🚀", 
@@ -77,11 +127,6 @@ if PAGES_DIR.is_dir():
     if not screener_files:
         st.info("No screener pages found in the 'pages' directory.")
     else:
-        st.sidebar.subheader("Debug: Page Links")
-        for f_path in screener_files:
-            _, debug_href = get_page_display_name_and_href(f_path) # Get the href Streamlit likely uses
-            st.sidebar.caption(f"File: {f_path.name}  -> Href generated: '{debug_href}'")
-            
         num_screeners = len(screener_files)
         cols_per_row = 2 
         
@@ -91,8 +136,8 @@ if PAGES_DIR.is_dir():
             
             for idx, screener_file_path in enumerate(row_files):
                 display_name, href_target = get_page_display_name_and_href(screener_file_path)
-                description = get_page_description(href_target) # Use href_target (base name) for lookup
-                icon = get_page_icon(href_target) # Use href_target (base name) for lookup
+                description = get_page_description(href_target) 
+                icon = get_page_icon(href_target) 
                 
                 with cols[idx]:
                     st.markdown(
@@ -102,13 +147,12 @@ if PAGES_DIR.is_dir():
                         </div></a>""", 
                         unsafe_allow_html=True
                     )
-            for j in range(len(row_files), cols_per_row):
+            for j in range(len(row_files), cols_per_row): # Fill empty columns if any
                 with cols[j]:
                     st.empty() 
 else:
-    st.warning(f"The 'pages' directory was not found at the expected location: {PAGES_DIR}.")
+    st.warning(f"The 'pages' directory was not found at the expected location: {PAGES_DIR}. Please create it relative to Home.py and add your screener Python files there.")
 
-# ... (rest of the How to Use, Disclaimer, Footer sections remain the same) ...
 st.markdown("---")
 st.subheader("💡 How to Use")
 st.markdown(
