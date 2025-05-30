@@ -15,42 +15,39 @@ st.title("📈 NIFTY 500: Fair Value & Uptrend Screener for Bull Run")
 st.markdown("Identifies NIFTY 500 stocks with reasonable valuation and strong uptrend potential.")
 
 # --- Define Fixed Screening Criteria ---
-# Fundamental
 FIXED_MAX_PE = 35.0
-FIXED_MAX_PEG = 1.5 # Price/Earnings to Growth Ratio
+FIXED_MAX_PEG = 1.5 
 FIXED_MAX_PB = 6.0
 FIXED_MAX_DE = 1.5 
 FIXED_MIN_ROE_PERCENT = 15.0
 FIXED_MIN_EPS_GROWTH_PERCENT = 5.0 
-
-# Technical
 FIXED_PRICE_GT_50SMA = True
-FIXED_PRICE_GT_200SMA = True # Added for stronger trend
-FIXED_SMA50_GT_SMA200 = True # Golden Cross
+FIXED_PRICE_GT_200SMA = True 
+FIXED_SMA50_GT_SMA200 = True 
 FIXED_MIN_RSI = 45
-FIXED_MAX_RSI = 75 # Allow stronger momentum
+FIXED_MAX_RSI = 75 
 FIXED_APPLY_VOLUME_BUZZ = True
-FIXED_VOLUME_BUZZ_FACTOR = 1.3 # Slightly higher conviction
+FIXED_VOLUME_BUZZ_FACTOR = 1.3 
 
 with st.expander("🧠 **Screening Philosophy & Fixed Criteria Used**", expanded=True):
     st.markdown(f"""
     This screener aims to find companies that are reasonably valued (not excessively expensive) and are already demonstrating strong technical uptrends, making them potential candidates to perform well in a continued market upswing.
 
     **Fundamental Filters:**
-    - **Max P/E Ratio (Trailing):** {FIXED_MAX_PE} (Avoids overly expensive stocks)
-    - **Max PEG Ratio:** {FIXED_MAX_PEG} (Price/Earnings to Growth, lower is better, ideally <=1 for fair value relative to growth)
-    - **Max P/B Ratio:** {FIXED_MAX_PB} (Book value check)
-    - **Max Debt-to-Equity Ratio:** {FIXED_MAX_DE} (Focus on financially healthier companies)
-    - **Min ROE (Return on Equity):** {FIXED_MIN_ROE_PERCENT}% (Sign of a quality, profitable business)
-    - **Min EPS Growth (Quarterly, YoY):** {FIXED_MIN_EPS_GROWTH_PERCENT}% (Positive earnings momentum)
+    - **Max P/E Ratio (Trailing):** {FIXED_MAX_PE}
+    - **Max PEG Ratio:** {FIXED_MAX_PEG}
+    - **Max P/B Ratio:** {FIXED_MAX_PB}
+    - **Max Debt-to-Equity Ratio:** {FIXED_MAX_DE}
+    - **Min ROE (Return on Equity):** {FIXED_MIN_ROE_PERCENT}%
+    - **Min EPS Growth (Quarterly, YoY):** {FIXED_MIN_EPS_GROWTH_PERCENT}%
 
     **Technical Trend Filters:**
     - **Price > 50-Day SMA:** {'Yes' if FIXED_PRICE_GT_50SMA else 'No'}
     - **Price > 200-Day SMA:** {'Yes' if FIXED_PRICE_GT_200SMA else 'No'}
-    - **50-Day SMA > 200-Day SMA (Golden Cross):** {'Yes' if FIXED_SMA50_GT_SMA200 else 'No'} (Strong bullish signal)
-    - **RSI (14-day) Range:** {FIXED_MIN_RSI} - {FIXED_MAX_RSI} (Healthy, but not extremely overbought momentum)
+    - **50-Day SMA > 200-Day SMA (Golden Cross):** {'Yes' if FIXED_SMA50_GT_SMA200 else 'No'}
+    - **RSI (14-day) Range:** {FIXED_MIN_RSI} - {FIXED_MAX_RSI}
     - **Volume Buzz Applied:** {'Yes' if FIXED_APPLY_VOLUME_BUZZ else 'No'}
-    - **Volume Buzz Factor (Current Vol / Avg Vol):** {FIXED_VOLUME_BUZZ_FACTOR}x (if applied, indicates strong interest)
+    - **Volume Buzz Factor (Current Vol / Avg Vol):** {FIXED_VOLUME_BUZZ_FACTOR}x (if applied)
     """)
 
 @st.cache_data(ttl=timedelta(days=1), show_spinner=False)
@@ -70,12 +67,11 @@ def load_nifty500_list():
 
 @st.cache_data(ttl=timedelta(hours=1), show_spinner=False)
 def fetch_stock_data(tickers_tuple, start_date_str, end_date_str):
-    # ... (no changes to this function needed from the previous correct version)
     tickers_list = list(tickers_tuple)
     if not tickers_list: return {}
     try:
         data = yf.download(tickers_list, start=start_date_str, end=end_date_str,
-                           interval='1d', group_by='ticker', auto_adjust=False, progress=False, timeout=90) # Increased timeout
+                           interval='1d', group_by='ticker', auto_adjust=False, progress=False, timeout=90)
         stock_data_processed = {}
         if data.empty: return {}
         if isinstance(data.columns, pd.MultiIndex):
@@ -90,14 +86,13 @@ def fetch_stock_data(tickers_tuple, start_date_str, end_date_str):
     except Exception:
         return {}
 
-
 @st.cache_data(ttl=timedelta(hours=1), show_spinner=False)
 def get_stock_info(ticker_str):
     try:
         stock = yf.Ticker(ticker_str)
         info = stock.info
         keys_to_extract = [
-            'trailingPE', 'forwardPE', 'priceToBook', 'debtToEquity', 'pegRatio', # Added pegRatio
+            'trailingPE', 'forwardPE', 'priceToBook', 'debtToEquity', 'pegRatio',
             'returnOnEquity', 'earningsQuarterlyGrowth', 'beta', 
             'marketCap', 'industry', 'sector', 'previousClose', 'volume', 'averageVolume'
         ]
@@ -109,11 +104,10 @@ def get_stock_info(ticker_str):
 @st.cache_data(ttl=timedelta(hours=1), show_spinner=False)
 def run_screener(tickers_list_tuple, sector_map_dict, 
                  filter_max_pe, filter_max_peg, filter_max_pb, filter_max_de, filter_min_roe_pct, filter_min_eps_g_pct,
-                 filter_price_gt_50sma, filter_price_gt_200sma, filter_sma50_gt_sma200, # Adjusted technical params
+                 filter_price_gt_50sma, filter_price_gt_200sma, filter_sma50_gt_sma200,
                  filter_min_rsi, filter_max_rsi, filter_vol_buzz_factor, filter_apply_vol_buzz):
     screened_stocks_data = []
     end_date_dt = datetime.today()
-    # Need enough data for 252-day rolling for 52W High, and 200DMA
     start_date_dt = end_date_dt - timedelta(days=400) 
     hist_data_batch = fetch_stock_data(tickers_list_tuple, start_date_dt.strftime('%Y-%m-%d'), end_date_dt.strftime('%Y-%m-%d'))
 
@@ -128,7 +122,7 @@ def run_screener(tickers_list_tuple, sector_map_dict,
             eps_g = info.get('earningsQuarterlyGrowth')
 
             if pe is not None and (pe > filter_max_pe or pe <= 0): continue
-            if peg is not None and (peg > filter_max_peg or peg <= 0): continue # PEG should be positive
+            if peg is not None and (peg > filter_max_peg or peg <= 0): continue
             if pb is not None and (pb > filter_max_pb or pb <= 0): continue
             if de is not None and de > filter_max_de: continue 
             if roe is not None and roe < (filter_min_roe_pct / 100.0): continue
@@ -136,32 +130,21 @@ def run_screener(tickers_list_tuple, sector_map_dict,
             
             if ticker not in hist_data_batch or hist_data_batch[ticker].empty: continue
             df = hist_data_batch[ticker].copy()
-            df.dropna(subset=['Adj Close', 'High', 'Volume'], inplace=True) # Added High for 52W High
+            df.dropna(subset=['Adj Close', 'High', 'Volume'], inplace=True)
             
             min_days_for_200ma = 200
             min_days_for_50ma = 50
-            min_days_for_52wh = 200 # Require at least ~9 months of data for a decent 52w high
+            min_days_for_52wh = 200 
 
-            if len(df) < min_days_for_50ma: continue # Absolute minimum
-            if filter_sma50_gt_sma200 and len(df) < min_days_for_200ma: continue
-            if filter_price_gt_200sma and len(df) < min_days_for_200ma: continue
-
+            if len(df) < min_days_for_50ma: continue
+            if (filter_sma50_gt_sma200 or filter_price_gt_200sma) and len(df) < min_days_for_200ma: continue
 
             latest_close = df['Adj Close'].iloc[-1]
             latest_volume = df['Volume'].iloc[-1]
             
             df['SMA50'] = df['Adj Close'].rolling(window=50, min_periods=min_days_for_50ma-10).mean() 
-            if len(df) >= min_days_for_200ma : # Only calculate if enough data
-                df['SMA200'] = df['Adj Close'].rolling(window=200, min_periods=min_days_for_200ma-20).mean()
-            else:
-                df['SMA200'] = np.nan # Ensure column exists but is NaN
-
-            if len(df) >= min_days_for_52wh:
-                 df['52W_High_Val'] = df['High'].rolling(window=252, min_periods=min_days_for_52wh-20).max()
-            else:
-                 df['52W_High_Val'] = np.nan
-
-
+            df['SMA200'] = df['Adj Close'].rolling(window=200, min_periods=min_days_for_200ma-20).mean() if len(df) >= min_days_for_200ma else np.nan
+            df['52W_High_Val'] = df['High'].rolling(window=252, min_periods=min_days_for_52wh-20).max() if len(df) >= min_days_for_52wh else np.nan
             df['AvgVol20'] = df['Volume'].rolling(window=20, min_periods=15).mean()
             
             delta = df['Adj Close'].diff(1)
@@ -182,15 +165,13 @@ def run_screener(tickers_list_tuple, sector_map_dict,
                  current_rsi = 100.0
 
             sma50 = df['SMA50'].iloc[-1]
-            sma200 = df['SMA200'].iloc[-1] if 'SMA200' in df.columns else np.nan
-            latest_52w_high = df['52W_High_Val'].iloc[-1] if '52W_High_Val' in df.columns else np.nan
+            sma200 = df['SMA200'].iloc[-1] if 'SMA200' in df.columns and pd.notna(df['SMA200'].iloc[-1]) else np.nan
+            latest_52w_high = df['52W_High_Val'].iloc[-1] if '52W_High_Val' in df.columns and pd.notna(df['52W_High_Val'].iloc[-1]) else np.nan
             avg_vol20 = df['AvgVol20'].iloc[-1]
             
-            # Check essential technicals
             if pd.isna(sma50) or pd.isna(current_rsi) or pd.isna(avg_vol20): continue
             if (filter_sma50_gt_sma200 or filter_price_gt_200sma) and pd.isna(sma200): continue
 
-            # Apply Technical Filters
             if filter_price_gt_50sma and (latest_close <= sma50): continue
             if filter_price_gt_200sma and (latest_close <= sma200): continue
             if filter_sma50_gt_sma200 and (sma50 <= sma200): continue
@@ -206,16 +187,14 @@ def run_screener(tickers_list_tuple, sector_map_dict,
                 'Industry': sector_map_dict.get(ticker, info.get('industry', 'N/A')),
                 'Price': latest_close, 'P/E': pe, 'PEG': peg, 'P/B': pb, 'D/E': de,
                 'ROE (%)': roe * 100 if roe is not None else np.nan,
-                'EPS Gr. (%)': eps_g * 100 if eps_g is not None else np.nan, # Shortened name
+                'EPS Gr. (%)': eps_g * 100 if eps_g is not None else np.nan,
                 'RSI': current_rsi, 
                 'Dist 52WH (%)': dist_from_52wh,
                 'Vol (M)': latest_volume / 1e6,
-                'AvgVol (M)': avg_vol20 / 1e6 if pd.notna(avg_vol20) else np.nan, # Renamed from Avg Vol
-                'MCap (Cr)': info.get('marketCap', np.nan) / 1e7 if info.get('marketCap') is not None else np.nan # Shortened
+                'AvgVol (M)': avg_vol20 / 1e6 if pd.notna(avg_vol20) else np.nan,
+                'MCap (Cr)': info.get('marketCap', np.nan) / 1e7 if info.get('marketCap') is not None else np.nan
             })
         except Exception: 
-            # import traceback # Uncomment for deep debugging
-            # print(f"Error processing {ticker}: {traceback.format_exc()}") # Uncomment for deep debugging
             continue
         
     df_result = pd.DataFrame(screened_stocks_data)
@@ -227,7 +206,6 @@ def run_screener(tickers_list_tuple, sector_map_dict,
                 df_result[col] = pd.to_numeric(df_result[col], errors='coerce')
     return df_result
 
-# --- Main App Logic ---
 with st.spinner("📜 Loading NIFTY 500 list..."):
     tickers_list, sector_map = load_nifty500_list()
 if not tickers_list: st.error("Failed to load stock list."); st.stop()
@@ -273,12 +251,11 @@ else:
         st.dataframe(df_screened_raw)
         st.stop()
     
-    # Debug df_display types before styling
+    # Debug df_display types before styling (optional - uncomment if issues persist)
     # buffer_display = io.StringIO()
     # df_display.info(buf=buffer_display)
     # s_display = buffer_display.getvalue()
     # st.text_area("`df_display.info()` before styling:", s_display, height=300)
-
 
     try:
         float_cols_to_format = {
@@ -291,16 +268,11 @@ else:
         for col_name, fmt_str in float_cols_to_format.items():
             if col_name in df_display.columns and pd.api.types.is_numeric_dtype(df_display[col_name]):
                 actual_formats[col_name] = fmt_str
-            # Optional: Warn if a column intended for formatting is not numeric
-            # elif col_name in df_display.columns:
-            #     st.sidebar.warning(f"Display column '{col_name}' (dtype: {df_display[col_name].dtype}) not formatted as float.")
-
-
-        styler = df_display.style.set_na_rep("-") # Set NaNs to "-"
-        if actual_formats: 
-            styler = styler.format(actual_formats) # Apply specific float formats
         
-    except AttributeError as ae: # Should not happen if df_display is valid DataFrame
+        # Corrected Styler initialization and formatting
+        styler = df_display.style.format(formatter=actual_formats if actual_formats else None, na_rep="-")
+        
+    except AttributeError as ae: 
         st.error(f"AttributeError during styling: {ae}. `df_display` might be invalid.")
         st.stop()
     except Exception as e:
