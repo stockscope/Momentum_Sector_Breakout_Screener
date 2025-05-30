@@ -1,7 +1,7 @@
 # Home.py
 import streamlit as st
-import os # Import the os module
-from pathlib import Path # For more robust path handling
+import os 
+from pathlib import Path 
 
 # Page Configuration for Home page - sidebar initially collapsed
 st.set_page_config(
@@ -14,12 +14,11 @@ st.set_page_config(
 # --- Custom CSS ---
 st.markdown("""
     <style>
-        /* ... (Your existing CSS for cards, etc.) ... */
         [data-testid="stSidebar"] {
             background-color: #f0f2f6; 
         }
         .main .block-container {
-            padding-top: 2rem;
+            padding-top: 1rem; /* Reduced top padding */
             padding-bottom: 2rem;
             padding-left: 2rem;
             padding-right: 2rem;
@@ -27,6 +26,7 @@ st.markdown("""
         h1 {
             color: #2c3e50; 
             text-align: center;
+            margin-bottom: 0.5rem; /* Reduced margin below title */
         }
         .card {
             background-color: white;
@@ -37,7 +37,7 @@ st.markdown("""
             transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
             border: 1px solid #e0e0e0;
             display: block; 
-            height: 100%; /* Make cards in a row same height */
+            height: 100%; 
         }
         .card:hover {
             transform: translateY(-5px);
@@ -47,11 +47,12 @@ st.markdown("""
             margin-top: 0;
             color: #3498db; 
             margin-bottom: 0.75rem;
+            font-size: 1.25rem; /* Slightly larger card titles */
         }
         .card p {
             color: #555;
-            font-size: 0.95rem;
-            line-height: 1.6;
+            font-size: 0.9rem; /* Slightly smaller card paragraph text */
+            line-height: 1.5;
         }
         .card a { 
             text-decoration: none;
@@ -59,9 +60,19 @@ st.markdown("""
         }
         hr {
             border-top: 1px solid #eee;
-            margin-top: 1.5rem;
-            margin-bottom: 1.5rem;
+            margin-top: 1rem; /* Reduced hr margin */
+            margin-bottom: 1rem; /* Reduced hr margin */
         }
+        /* Reduce space around the main title and first hr */
+        div[data-testid="stHorizontalBlock"] > div:first-child > div[data-testid="stVerticalBlock"] > div:first-child > div[data-testid="stVerticalBlock"] > div:first-child {
+            margin-bottom: 0.5rem !important;
+        }
+        div[data-testid="stHorizontalBlock"] > div:first-child > div[data-testid="stVerticalBlock"] > div:nth-child(2) > div > hr {
+            margin-top: 0.5rem !important;
+            margin-bottom: 1rem !important;
+        }
+
+
     </style>
 """, unsafe_allow_html=True)
 
@@ -69,85 +80,108 @@ st.markdown("""
 # --- Page Content ---
 st.title("📈 Welcome to StockScopePro!")
 st.markdown("---") 
-st.markdown("Select a screener to begin your analysis:")
+st.markdown("<p style='text-align:center; font-size: 1.1em;'>Select a screener to begin your analysis:</p>", unsafe_allow_html=True)
+
 
 # --- Dynamic Screener Listing ---
-PAGES_DIR = Path("pages") # Define the path to your pages directory
+# Get the directory of the current script (Home.py)
+current_script_dir = Path(__file__).parent
+# Define the path to your pages directory relative to Home.py
+PAGES_DIR = current_script_dir / "pages"
+
 
 # Function to generate a user-friendly name from a filename
-def get_page_display_name(filename_with_ext):
-    filename_no_ext = filename_with_ext.stem # Removes .py
-    # Replace underscores with spaces and capitalize words
-    display_name = filename_no_ext.replace("_", " ").title()
+def get_page_display_name(filename_path_obj):
+    filename_no_ext = filename_path_obj.stem 
+    # Attempt to strip leading "number_" pattern for display name
+    parts = filename_no_ext.split("_", 1)
+    if len(parts) > 1 and parts[0].isdigit():
+        display_name_base = parts[1]
+    else:
+        display_name_base = filename_no_ext
+    
+    display_name = display_name_base.replace("_", " ").title()
     return display_name
 
 # Function to get a generic description or allow for custom ones
-def get_page_description(filename_no_ext):
-    # You can create a dictionary for custom descriptions if needed
+def get_page_description(filename_stem): # Takes filename without .py
     custom_descriptions = {
         "NIFTY_200_Screener": "Identifies breakout or retest setups in top-performing sectors within the NIFTY 200 universe.",
+        "1_NIFTY_200_Screener": "Identifies breakout or retest setups in top-performing sectors within the NIFTY 200 universe.", # Fallback if number not stripped for key
         "NIFTY_500_Screener": "A broader momentum scan focusing on breakout/retest setups within the NIFTY 500 index.",
-        "NIFTY_500_Advanced_Screener": "Advanced filtering options for in-depth analysis of NIFTY 500 stocks.",
-        "NIFTY_500_Value_Screener": "Scans the NIFTY 500 for stocks that appear reasonably valued and are exhibiting signs of an uptrend."
+        "2_NIFTY_500_Screener": "A broader momentum scan focusing on breakout/retest setups within the NIFTY 500 index.",
+        "NIFTY_500_Advanced_Screener": "Advanced filtering for in-depth analysis of NIFTY 500 stocks. (Update this description!)",
+        "3_NIFTY_500_Advanced_Screener": "Advanced filtering for in-depth analysis of NIFTY 500 stocks. (Update this description!)",
+        "NIFTY_500_Value_Screener": "Scans the NIFTY 500 for stocks that appear reasonably valued and are exhibiting signs of an uptrend.",
+        "4_NIFTY_500_Value_Screener": "Scans the NIFTY 500 for stocks that appear reasonably valued and are exhibiting signs of an uptrend."
     }
-    return custom_descriptions.get(filename_no_ext, "Explore this screener to find potential stock opportunities.")
+    # Try to match without number prefix first for cleaner keys
+    base_name = filename_stem.split("_", 1)[1] if filename_stem.split("_", 1)[0].isdigit() and len(filename_stem.split("_", 1)) > 1 else filename_stem
+    return custom_descriptions.get(base_name, custom_descriptions.get(filename_stem, "Explore this screener to find potential stock opportunities."))
 
-# Function to get a generic icon or allow for custom ones
-def get_page_icon(filename_no_ext):
+
+def get_page_icon(filename_stem):
     custom_icons = {
-        "NIFTY_200_Screener": "📊",
-        "NIFTY_500_Screener": "🚀",
-        "NIFTY_500_Advanced_Screener": "⚙️",
-        "NIFTY_500_Value_Screener": "📈"
+        "NIFTY_200_Screener": "📊", "1_NIFTY_200_Screener": "📊",
+        "NIFTY_500_Screener": "🚀", "2_NIFTY_500_Screener": "🚀",
+        "NIFTY_500_Advanced_Screener": "⚙️", "3_NIFTY_500_Advanced_Screener": "⚙️",
+        "NIFTY_500_Value_Screener": "📈", "4_NIFTY_500_Value_Screener": "📈"
     }
-    return custom_icons.get(filename_no_ext, "🛠️")
+    base_name = filename_stem.split("_", 1)[1] if filename_stem.split("_", 1)[0].isdigit() and len(filename_stem.split("_", 1)) > 1 else filename_stem
+    return custom_icons.get(base_name, custom_icons.get(filename_stem, "🛠️"))
 
 
 if PAGES_DIR.is_dir():
-    # Get .py files, sort them (e.g., alphabetically for consistent order)
-    # Exclude files starting with '.' (like .DS_Store) or '__init__.py'
-    screener_files = sorted([f for f in PAGES_DIR.iterdir() if f.is_file() and f.suffix == '.py' and not f.name.startswith('.') and not f.name == "__init__.py"])
+    screener_files = sorted([
+        f for f in PAGES_DIR.iterdir() 
+        if f.is_file() and f.suffix == '.py' and 
+           not f.name.startswith('.') and not f.name == "__init__.py"
+    ])
     
     if not screener_files:
         st.info("No screener pages found in the 'pages' directory.")
     else:
-        # Create columns dynamically based on number of screeners, aiming for 2-3 per row
+        st.sidebar.subheader("Debug: Page Links")
+        for f_path in screener_files:
+            debug_href = f_path.stem # Filename without .py, including any numbers_
+            st.sidebar.caption(f"File: {f_path.name}  -> Href used: '{debug_href}'")
+            
         num_screeners = len(screener_files)
-        cols_per_row = 2 # You can adjust this
+        cols_per_row = 2 
         
-        # Create rows of columns
         for i in range(0, num_screeners, cols_per_row):
             row_files = screener_files[i : i + cols_per_row]
-            cols = st.columns(len(row_files)) # Create as many columns as files in this row
+            # Ensure enough columns are created, even if last row is not full
+            cols = st.columns(cols_per_row) # Always create full number of columns for the row design
             
             for idx, screener_file_path in enumerate(row_files):
-                filename_no_ext = screener_file_path.stem # e.g., "NIFTY_200_Screener"
-                display_name = get_page_display_name(screener_file_path)
-                description = get_page_description(filename_no_ext)
-                icon = get_page_icon(filename_no_ext)
+                filename_stem_for_href = screener_file_path.stem # e.g., "1_NIFTY_200_Screener" or "NIFTY_200_Screener"
                 
-                # Streamlit constructs the URL path from the filename in the pages dir
-                # The href should be just the filename without .py
-                href_target = filename_no_ext 
-
+                display_name = get_page_display_name(screener_file_path) # Tries to make it pretty
+                description = get_page_description(filename_stem_for_href) # Uses stem for lookup
+                icon = get_page_icon(filename_stem_for_href) # Uses stem for lookup
+                
                 with cols[idx]:
                     st.markdown(
-                        f"""<a href="{href_target}" target="_self"><div class="card">
+                        f"""<a href="{filename_stem_for_href}" target="_self"><div class="card">
                         <h3>{icon} {display_name}</h3>
                         <p>{description}</p>
                         </div></a>""", 
                         unsafe_allow_html=True
                     )
+            # If the last row has fewer items than cols_per_row, fill remaining columns with empty space
+            for j in range(len(row_files), cols_per_row):
+                with cols[j]:
+                    st.empty() # Keeps the column structure
 else:
-    st.warning("The 'pages' directory was not found. Please create it and add your screener Python files there.")
-
+    st.warning(f"The 'pages' directory was not found at the expected location: {PAGES_DIR}. Please create it relative to Home.py and add your screener Python files there.")
 
 st.markdown("---")
 st.subheader("💡 How to Use")
 st.markdown(
     """
     1.  **Click on a Screener Card:** Choose one of the screeners listed above.
-    2.  **Sidebar Navigation (on Screener Pages):** Once on a screener page, the sidebar will appear, allowing you to switch between different screeners easily.
+    2.  **Sidebar Navigation (on Screener Pages):** Once on a screener page, the sidebar will appear, allowing you to switch between different screeners easily. Streamlit also adds discovered pages to the sidebar automatically.
     3.  **Understand Criteria:** Each screener page explains the specific criteria used for stock selection.
     4.  **Analyze & Download:** Review the results table and download data for your own further research.
     """
