@@ -6,36 +6,28 @@ st.set_page_config(
     page_title="StockScopePro Hub",
     page_icon="🔍",
     layout="wide",
-    initial_sidebar_state="collapsed" # Collapsed on the home page
+    initial_sidebar_state="collapsed" 
 )
 
 # --- Custom CSS ---
-# Removed the aggressive mobile sidebar CSS as initial_sidebar_state handles it better
 st.markdown("""
     <style>
-        /* Sidebar styling (will apply when it's visible on other pages or if user opens it) */
         [data-testid="stSidebar"] {
             background-color: #f0f2f6; 
         }
-        
-        /* Main content area styling for better readability */
         .main .block-container {
             padding-top: 2rem;
             padding-bottom: 2rem;
             padding-left: 2rem;
             padding-right: 2rem;
         }
-
-        /* Title styling */
         h1 {
             color: #2c3e50; 
             text-align: center;
         }
-        h2, h3 { /* For section headers */
-            color: #2980b9; 
-        }
+        /* Removed h2, h3 styling for now as the "Our Screeners" header is removed */
+        /* If you add other h2/h3, you might want to re-add specific styling */
 
-        /* Card-like styling for links */
         .card {
             background-color: white;
             padding: 1.5rem;
@@ -44,7 +36,7 @@ st.markdown("""
             margin-bottom: 1.5rem;
             transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
             border: 1px solid #e0e0e0;
-            display: block; /* Make the whole card area behave like a block for the link */
+            display: block; 
         }
         .card:hover {
             transform: translateY(-5px);
@@ -60,14 +52,14 @@ st.markdown("""
             font-size: 0.95rem;
             line-height: 1.6;
         }
-        .card a { /* Style for the link itself if needed, but we made the div clickable */
+        .card a { 
             text-decoration: none;
             color: inherit; 
         }
         hr {
             border-top: 1px solid #eee;
-            margin-top: 2rem;
-            margin-bottom: 2rem;
+            margin-top: 1.5rem; /* Adjusted margin */
+            margin-bottom: 1.5rem; /* Adjusted margin */
         }
     </style>
 """, unsafe_allow_html=True)
@@ -75,53 +67,48 @@ st.markdown("""
 
 # --- Page Content ---
 st.title("📈 Welcome to StockScopePro!")
-st.markdown("---")
-st.markdown(
-    """
-    Your comprehensive hub for specialized stock screeners. 
-    Navigate through our tools to identify potential investment opportunities in the Indian stock market 
-    based on momentum, value, and trend criteria.
-    """
-)
-st.markdown("---")
+# Removed the introductory markdown here
+st.markdown("---") 
 
-st.header("🛠️ Our Screeners")
+# Removed the "Our Screeners" header
 st.markdown("Select a screener to begin your analysis:")
 
 col1, col2 = st.columns(2)
 
-# Ensure your page paths are correct. For a multi-page app, these would be
-# relative to the 'pages' directory, e.g., "NIFTY_200_Screener" if the file is pages/NIFTY_200_Screener.py
-# Streamlit constructs the URLs based on these filenames.
-
 with col1:
-    st.markdown( # Using st.page_link for cleaner navigation if Streamlit version >= 1.29
-        """<a href="NIFTY_200_Screener" target="_self"><div class="card">
-        <h3>📊 NIFTY 200 Momentum Screener</h3>
+    # Screener 1: NIFTY 200 Momentum
+    # IMPORTANT: Ensure href matches the filename in your 'pages' directory (without .py and leading numbers/underscores if desired for cleaner URLs, Streamlit handles it)
+    # e.g., for "pages/1_NIFTY_200_Screener.py", href="1_NIFTY_200_Screener"
+    st.markdown(
+        """<a href="1_NIFTY_200_Screener" target="_self"><div class="card">
+        <h3>📊 NIFTY 200 Momentum</h3>
         <p>Identifies breakout or retest setups in top-performing sectors within the NIFTY 200 universe.</p>
         </div></a>""", unsafe_allow_html=True
     )
+    # Screener 2: NIFTY 500 Advanced (Moved here to balance columns)
     st.markdown(
-        """<a href="NIFTY_500_Value_Screener" target="_self"><div class="card">
-        <h3>📈 NIFTY 500 Value & Trend Screener</h3>
-        <p>Scans the NIFTY 500 for stocks that appear reasonably valued and are exhibiting signs of a potential uptrend.</p>
+        """<a href="3_NIFTY_500_Advanced_Screener" target="_self"><div class="card">
+        <h3>⚙️ NIFTY 500 Advanced</h3>
+        <p>Provides advanced filtering options for in-depth analysis of NIFTY 500 stocks. (Update this description!)</p>
         </div></a>""", unsafe_allow_html=True
     )
 
+
 with col2:
+    # Screener 3: NIFTY 500 Momentum
     st.markdown(
-        """<a href="NIFTY_500_Screener" target="_self"><div class="card">
-        <h3>🚀 NIFTY 500 Momentum Screener</h3>
+        """<a href="2_NIFTY_500_Screener" target="_self"><div class="card">
+        <h3>🚀 NIFTY 500 Momentum</h3>
         <p>A broader momentum scan focusing on breakout/retest setups within the NIFTY 500 index.</p>
         </div></a>""", unsafe_allow_html=True
     )
-    # Example for a fourth card if you add another screener
-    # st.markdown(
-    #     """<a href="Some_Other_Screener" target="_self"><div class="card">
-    #     <h3>⚙️ Another Screener</h3>
-    #     <p>Description of the other screener.</p>
-    #     </div></a>""", unsafe_allow_html=True
-    # )
+    # Screener 4: NIFTY 500 Value & Trend
+    st.markdown(
+        """<a href="4_NIFTY_500_Value_Screener" target="_self"><div class="card">
+        <h3>📈 NIFTY 500 Value & Trend</h3>
+        <p>Scans the NIFTY 500 for stocks that appear reasonably valued and are exhibiting signs of an uptrend.</p>
+        </div></a>""", unsafe_allow_html=True
+    )
 
 st.markdown("---")
 st.subheader("💡 How to Use")
