@@ -12,33 +12,49 @@ matplotlib.rcParams['axes.unicode_minus'] = False
 
 st.set_page_config(layout="wide")
 st.title("📈 NIFTY 500: Valuation & Uptrend Screener")
-st.markdown("Identifies NIFTY 500 stocks with potentially good valuation and signs of an uptrend.")
+st.markdown("Identifies NIFTY 500 stocks with potentially good valuation and signs of an uptrend using fixed criteria.")
 
-with st.expander("🧠 **Screening Philosophy & Criteria**", expanded=True):
-    st.markdown("""
-    This screener combines fundamental valuation metrics with technical trend indicators to find potentially undervalued stocks that are showing signs of an upward price movement.
+# --- Define Fixed Screening Criteria ---
+# Fundamental
+FIXED_MAX_PE = 40.0
+FIXED_MAX_PB = 7.0
+FIXED_MAX_DE = 2.0
+FIXED_MIN_ROE_PERCENT = 10.0  # As percentage
+FIXED_MIN_EPS_GROWTH_PERCENT = 0.0 # As percentage
 
-    **Fundamental Filters (User Adjustable):**
-    - **Max P/E Ratio (Trailing):** Price-to-Earnings ratio. Lower can indicate undervaluation.
-    - **Max P/B Ratio:** Price-to-Book ratio. Lower can indicate undervaluation.
-    - **Max Debt-to-Equity Ratio:** Measures financial leverage. Lower is generally better.
-    - **Min ROE (Return on Equity):** Measures profitability. Higher is generally better.
-    - **Min EPS Growth (Quarterly, YoY):** Indicates earnings growth.
+# Technical
+FIXED_PRICE_GT_20EMA = True
+FIXED_PRICE_GT_50SMA = True
+FIXED_SMA50_GT_SMA200 = False # Kept off for broader initial results
+FIXED_MIN_RSI = 35
+FIXED_MAX_RSI = 75
+FIXED_APPLY_VOLUME_BUZZ = True
+FIXED_VOLUME_BUZZ_FACTOR = 1.1
 
-    **Technical Trend Filters (User Adjustable):**
-    - **Price vs Moving Averages:**
-        - Price > 20-Day Exponential Moving Average (EMA)
-        - Price > 50-Day Simple Moving Average (SMA)
-        - (Optional) 50-Day SMA > 200-Day SMA (Golden Cross - Slower signal)
-    - **RSI (14-day):** Relative Strength Index.
-        - Min RSI / Max RSI: To filter for stocks in a healthy momentum range (e.g., 40-70).
-    - **Volume:**
-        - Current Volume > 1.2x of 20-Day Average Volume (Volume Buzz)
+
+with st.expander("🧠 **Screening Philosophy & Fixed Criteria Used**", expanded=True):
+    st.markdown(f"""
+    This screener combines fundamental valuation metrics with technical trend indicators to find potentially undervalued stocks that are showing signs of an upward price movement. The following fixed criteria are used:
+
+    **Fundamental Filters:**
+    - **Max P/E Ratio (Trailing):** {FIXED_MAX_PE}
+    - **Max P/B Ratio:** {FIXED_MAX_PB}
+    - **Max Debt-to-Equity Ratio:** {FIXED_MAX_DE}
+    - **Min ROE (Return on Equity):** {FIXED_MIN_ROE_PERCENT}%
+    - **Min EPS Growth (Quarterly, YoY):** {FIXED_MIN_EPS_GROWTH_PERCENT}%
+
+    **Technical Trend Filters:**
+    - **Price > 20-Day EMA:** {'Yes' if FIXED_PRICE_GT_20EMA else 'No'}
+    - **Price > 50-Day SMA:** {'Yes' if FIXED_PRICE_GT_50SMA else 'No'}
+    - **50-Day SMA > 200-Day SMA (Golden Cross):** {'Yes' if FIXED_SMA50_GT_SMA200 else 'No'}
+    - **RSI (14-day) Range:** {FIXED_MIN_RSI} - {FIXED_MAX_RSI}
+    - **Volume Buzz Applied:** {'Yes' if FIXED_APPLY_VOLUME_BUZZ else 'No'}
+    - **Volume Buzz Factor (Current Vol / Avg Vol):** {FIXED_VOLUME_BUZZ_FACTOR}x (if applied)
 
     **Note:** Fundamental data from `yfinance` can sometimes be missing or delayed. Technical signals are based on historical price data.
     """)
 
-# --- Helper Functions ---
+# --- Helper Functions (identical to previous version) ---
 @st.cache_data(ttl=timedelta(days=1), show_spinner=False)
 def load_nifty500_list():
     csv_url = "https://raw.githubusercontent.com/stockscope/Momentum_Sector_Breakout_Screener/main/ind_nifty500list.csv"
@@ -61,10 +77,8 @@ def fetch_stock_data(tickers_tuple, start_date_str, end_date_str):
     try:
         data = yf.download(tickers_list, start=start_date_str, end=end_date_str,
                            interval='1d', group_by='ticker', auto_adjust=False, progress=False, timeout=60)
-        
         stock_data_processed = {}
         if data.empty: return {}
-
         if isinstance(data.columns, pd.MultiIndex):
             for ticker in tickers_list:
                 try:
@@ -74,18 +88,14 @@ def fetch_stock_data(tickers_tuple, start_date_str, end_date_str):
         elif len(tickers_list) == 1 and isinstance(data, pd.DataFrame) and not data.empty:
              stock_data_processed[tickers_list[0]] = data
         return stock_data_processed
-    except Exception as e:
-        # st.sidebar.warning(f"Error in yf.download: {str(e)[:100]}")
+    except Exception:
         return {}
-
 
 @st.cache_data(ttl=timedelta(hours=1), show_spinner=False)
 def get_stock_info(ticker_str):
     try:
         stock = yf.Ticker(ticker_str)
         info = stock.info
-        # Select only a few key metrics to avoid overly large cache objects / too much data
-        # Add more as needed, but be mindful of yfinance's data availability
         keys_to_extract = [
             'trailingPE', 'forwardPE', 'priceToBook', 'debtToEquity', 
             'returnOnEquity', 'earningsQuarterlyGrowth', 'beta', 
@@ -94,101 +104,79 @@ def get_stock_info(ticker_str):
         filtered_info = {k: info.get(k) for k in keys_to_extract if info.get(k) is not None}
         return filtered_info
     except Exception:
-        return {} # Return empty dict on error
-
-# --- Sidebar for User Filters ---
-st.sidebar.header("⚙️ Set Screening Filters")
-
-st.sidebar.subheader("Fundamental Filters")
-max_pe = st.sidebar.slider("Max P/E Ratio (Trailing)", 0.1, 100.0, 30.0, 0.1, help="Set to 100 to effectively ignore.")
-max_pb = st.sidebar.slider("Max P/B Ratio", 0.1, 20.0, 5.0, 0.1, help="Set to 20 to effectively ignore.")
-max_de = st.sidebar.slider("Max Debt-to-Equity Ratio", 0.0, 5.0, 1.5, 0.01, help="Set to 5 to effectively ignore.")
-min_roe = st.sidebar.slider("Min ROE (%)", -50.0, 100.0, 15.0, 0.1, help="Return on Equity. Set to -50 to ignore.")
-min_eps_growth = st.sidebar.slider("Min EPS Growth (Quarterly YoY, %)", -100.0, 200.0, 5.0, 0.1, help="Set to -100 to ignore.")
-
-
-st.sidebar.subheader("Technical Trend Filters")
-price_gt_20ema = st.sidebar.checkbox("Price > 20 EMA", value=True)
-price_gt_50sma = st.sidebar.checkbox("Price > 50 SMA", value=True)
-sma50_gt_sma200 = st.sidebar.checkbox("50 SMA > 200 SMA (Golden Cross)", value=False) # Slower signal
-
-min_rsi = st.sidebar.slider("Min RSI (14-day)", 0, 100, 40, 1)
-max_rsi = st.sidebar.slider("Max RSI (14-day)", 0, 100, 70, 1)
-if min_rsi > max_rsi:
-    st.sidebar.warning("Min RSI cannot be greater than Max RSI.")
-    st.stop()
-
-volume_buzz_factor = st.sidebar.slider("Volume Buzz Factor (Current Vol / Avg Vol)", 1.0, 5.0, 1.2, 0.1, help="E.g., 1.2 means current volume > 1.2x average volume.")
-apply_volume_buzz = st.sidebar.checkbox("Apply Volume Buzz Filter", value=True)
-
+        return {}
 
 # --- Main Screening Logic ---
 @st.cache_data(ttl=timedelta(hours=1), show_spinner=False)
 def run_screener(tickers_list_tuple, sector_map_dict, 
-                 filter_max_pe, filter_max_pb, filter_max_de, filter_min_roe, filter_min_eps_g,
+                 filter_max_pe, filter_max_pb, filter_max_de, filter_min_roe_pct, filter_min_eps_g_pct, # Note: _pct for clarity
                  filter_price_gt_20ema, filter_price_gt_50sma, filter_sma50_gt_sma200,
                  filter_min_rsi, filter_max_rsi, filter_vol_buzz_factor, filter_apply_vol_buzz):
     
     screened_stocks = []
     end_date_dt = datetime.today()
-    start_date_dt = end_date_dt - timedelta(days=365 * 1.5) # For 200 DMA
+    start_date_dt = end_date_dt - timedelta(days=365 * 1.5) 
     
-    # Batch fetch historical data
     hist_data_batch = fetch_stock_data(tickers_list_tuple, start_date_dt.strftime('%Y-%m-%d'), end_date_dt.strftime('%Y-%m-%d'))
 
-    for ticker in tickers_list_tuple:
+    processed_tickers_count = 0 # For progress feedback
+
+    for i, ticker in enumerate(tickers_list_tuple):
+        # Optional: Progress feedback for long loops
+        # if (i + 1) % 50 == 0:
+        #     st.toast(f"Processing {i+1}/{len(tickers_list_tuple)}: {ticker}")
         try:
-            # 1. Fundamental Data
-            info = get_stock_info(ticker) # This is cached per ticker
+            info = get_stock_info(ticker)
 
             pe = info.get('trailingPE')
             pb = info.get('priceToBook')
             de = info.get('debtToEquity')
             roe = info.get('returnOnEquity')
-            eps_g = info.get('earningsQuarterlyGrowth') # This is often YoY quarterly growth
+            eps_g = info.get('earningsQuarterlyGrowth')
 
-            # Apply Fundamental Filters (allow None to pass if filter is set to max/min effectively ignoring it)
-            if filter_max_pe < 100.0 and (pe is None or pe > filter_max_pe or pe <=0): continue # Ignore negative or zero P/E by default with >0 check
-            if filter_max_pb < 20.0 and (pb is None or pb > filter_max_pb or pb <=0): continue
-            if filter_max_de < 5.0 and (de is None or de > filter_max_de): continue
-            if filter_min_roe > -50.0 and (roe is None or roe < (filter_min_roe / 100.0)): continue # ROE is decimal in yf
-            if filter_min_eps_g > -100.0 and (eps_g is None or eps_g < (filter_min_eps_g / 100.0)): continue # EPS Growth is decimal
+            if pe is not None and (pe > filter_max_pe or pe <= 0): continue
+            if pb is not None and (pb > filter_max_pb or pb <= 0): continue
+            if de is not None and de > filter_max_de: continue
+            if roe is not None and roe < (filter_min_roe_pct / 100.0): continue
+            if eps_g is not None and eps_g < (filter_min_eps_g_pct / 100.0): continue
+            
+            # If any fundamental is None and the filter is not at its "ignore" extreme, it would implicitly fail.
+            # To be more explicit: if a metric is None, it fails the check unless filter is set to ignore.
+            # This is tricky with fixed filters. For now, if metric is None, it might pass if other conditions are met.
+            # A stricter approach would be: if pe is None: continue (if pe filter is active)
 
-            # 2. Technical Data
             if ticker not in hist_data_batch or hist_data_batch[ticker].empty:
                 continue
             
             df = hist_data_batch[ticker].copy()
             df.dropna(subset=['Adj Close', 'Volume'], inplace=True)
-            if len(df) < 200: continue # Need enough data for longest MA
+            if len(df) < 200 and filter_sma50_gt_sma200: continue # Need 200 days if 200SMA is used
+            if len(df) < 50: continue # Need at least 50 for 50SMA
 
             latest_close = df['Adj Close'].iloc[-1]
             latest_volume = df['Volume'].iloc[-1]
 
             df['EMA20'] = df['Adj Close'].ewm(span=20, adjust=False).mean()
             df['SMA50'] = df['Adj Close'].rolling(window=50).mean()
-            df['SMA200'] = df['Adj Close'].rolling(window=200).mean()
+            if filter_sma50_gt_sma200:
+                 df['SMA200'] = df['Adj Close'].rolling(window=200).mean()
             df['AvgVol20'] = df['Volume'].rolling(window=20).mean()
 
-            # RSI
             delta = df['Adj Close'].diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
             rs = gain / loss
             df['RSI'] = 100 - (100 / (1 + rs))
 
-            # Get latest technical values
             ema20 = df['EMA20'].iloc[-1]
             sma50 = df['SMA50'].iloc[-1]
-            sma200 = df['SMA200'].iloc[-1]
+            sma200 = df['SMA200'].iloc[-1] if filter_sma50_gt_sma200 and 'SMA200' in df.columns else np.nan
             rsi = df['RSI'].iloc[-1]
             avg_vol20 = df['AvgVol20'].iloc[-1]
             
-            if pd.isna(ema20) or pd.isna(sma50) or pd.isna(rsi): continue # Essential technicals
+            if pd.isna(ema20) or pd.isna(sma50) or pd.isna(rsi): continue
             if filter_sma50_gt_sma200 and pd.isna(sma200): continue
 
-
-            # Apply Technical Filters
             if filter_price_gt_20ema and (latest_close <= ema20): continue
             if filter_price_gt_50sma and (latest_close <= sma50): continue
             if filter_sma50_gt_sma200 and (sma50 <= sma200): continue
@@ -196,7 +184,7 @@ def run_screener(tickers_list_tuple, sector_map_dict,
             if not (filter_min_rsi <= rsi <= filter_max_rsi): continue
             
             if filter_apply_vol_buzz:
-                if pd.isna(avg_vol20) or avg_vol20 == 0: continue # Cannot calculate buzz
+                if pd.isna(avg_vol20) or avg_vol20 == 0: continue
                 if latest_volume < (filter_vol_buzz_factor * avg_vol20): continue
             
             screened_stocks.append({
@@ -211,11 +199,11 @@ def run_screener(tickers_list_tuple, sector_map_dict,
                 'RSI': round(rsi, 2),
                 'Volume (M)': round(latest_volume / 1e6, 2),
                 'Avg Vol (M)': round(avg_vol20 / 1e6, 2) if pd.notna(avg_vol20) else 'N/A',
-                'Market Cap (Cr)': round(info.get('marketCap', 0) / 1e7, 2) if info.get('marketCap') else 'N/A' # Crores
+                'Market Cap (Cr)': round(info.get('marketCap', 0) / 1e7, 2) if info.get('marketCap') else 'N/A'
             })
+            processed_tickers_count +=1
 
-        except Exception as e:
-            # st.sidebar.warning(f"Error processing {ticker}: {str(e)[:50]}")
+        except Exception:
             continue
             
     return pd.DataFrame(screened_stocks)
@@ -229,47 +217,48 @@ if not tickers_list:
     st.error("Failed to load stock list. Screener cannot run.")
     st.stop()
 
-# --- Run Screener on Button Click or Automatically ---
-# For simplicity, let's run it automatically when filters change (Streamlit's natural behavior)
-# If it's too slow, a button could be added.
-
-with st.spinner(f"🔎 Screening NIFTY 500 stocks... This might take a few minutes for {len(tickers_list)} stocks."):
-    df_screened = run_screener(tuple(tickers_list), sector_map, # Pass tuple for caching
-                               max_pe, max_pb, max_de, min_roe, min_eps_growth,
-                               price_gt_20ema, price_gt_50sma, sma50_gt_sma200,
-                               min_rsi, max_rsi, volume_buzz_factor, apply_volume_buzz)
+# --- Run Screener ---
+with st.spinner(f"🔎 Screening NIFTY 500 stocks with fixed criteria... This might take a few minutes."):
+    df_screened = run_screener(
+        tuple(tickers_list), sector_map,
+        FIXED_MAX_PE, FIXED_MAX_PB, FIXED_MAX_DE, FIXED_MIN_ROE_PERCENT, FIXED_MIN_EPS_GROWTH_PERCENT,
+        FIXED_PRICE_GT_20EMA, FIXED_PRICE_GT_50SMA, FIXED_SMA50_GT_SMA200,
+        FIXED_MIN_RSI, FIXED_MAX_RSI, FIXED_VOLUME_BUZZ_FACTOR, FIXED_APPLY_VOLUME_BUZZ
+    )
 
 st.markdown(f"---")
 st.subheader(f"📊 Screened Stocks ({len(df_screened)} found)")
 
 if df_screened.empty:
-    st.info("No stocks matched all the selected criteria. Try adjusting the filters.")
+    st.info("No stocks matched all the fixed screening criteria. The criteria might be too strict for current market conditions or data availability.")
 else:
-    # Define display order - Ticker will be index
     cols_display_order = ['Industry', 'Price', 'P/E', 'P/B', 'D/E', 'ROE (%)', 'EPS Growth (%)', 
                           'RSI', 'Volume (M)', 'Avg Vol (M)', 'Market Cap (Cr)']
     
-    df_display = df_screened.set_index('Ticker')[cols_display_order].copy()
+    # Ensure Ticker is a column before setting it as index for display
+    if 'Ticker' not in df_screened.columns:
+        # This case should not happen if Ticker is added in run_screener
+        st.error("Ticker column missing in screened results.")
+        st.stop()
 
-    # Formatting for display
-    # Since data is already rounded and has 'N/A', specific Styler formats are less critical here for decimals
-    # but useful for alignment or other styling.
-    styler = df_display.style.set_na_rep("-") # Handles any remaining NaNs
+    df_display_intermediate = df_screened.set_index('Ticker')
     
-    # Example of conditional formatting (optional)
-    # def color_pe(val):
-    #     color = 'green' if isinstance(val, (int, float)) and val < 15 else 'black'
-    #     return f'color: {color}'
-    # styler = styler.applymap(color_pe, subset=['P/E'])
+    # Select only columns that exist in df_display_intermediate after setting index
+    actual_cols_to_display = [col for col in cols_display_order if col in df_display_intermediate.columns]
+    df_display = df_display_intermediate[actual_cols_to_display].copy()
 
-    df_height = min((len(df_display) + 1) * 35 + 3, 700) # Max height 700px
+
+    styler = df_display.style.set_na_rep("-").format(precision=2) 
+    # .format(precision=2) will apply to all float columns
+
+    df_height = min((len(df_display) + 1) * 35 + 3, 700)
     st.dataframe(styler, use_container_width=True, height=df_height)
 
     csv = df_screened.to_csv(index=False).encode('utf-8')
     st.download_button(
         label="📥 Download Screened Data as CSV",
         data=csv,
-        file_name=f"nifty500_valuation_uptrend_screener_{datetime.today().strftime('%Y%m%d')}.csv",
+        file_name=f"nifty500_valuation_uptrend_screener_fixed_{datetime.today().strftime('%Y%m%d')}.csv",
         mime='text/csv',
     )
 
