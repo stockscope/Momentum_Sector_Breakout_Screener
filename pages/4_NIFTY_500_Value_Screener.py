@@ -95,7 +95,6 @@ def get_stock_info(ticker_str):
             'returnOnEquity', 'earningsQuarterlyGrowth', 'beta', 
             'marketCap', 'industry', 'sector', 'previousClose', 'volume', 'averageVolume'
         ]
-        # Return info.get(k) which can be None, to be handled later by pd.to_numeric
         filtered_info = {k: info.get(k) for k in keys_to_extract} 
         return filtered_info
     except Exception:
@@ -116,7 +115,7 @@ def run_screener(tickers_list_tuple, sector_map_dict,
             info = get_stock_info(ticker)
             pe = info.get('trailingPE')
             pb = info.get('priceToBook')
-            de = info.get('debtToEquity') # This can be None
+            de = info.get('debtToEquity') 
             roe = info.get('returnOnEquity')
             eps_g = info.get('earningsQuarterlyGrowth')
 
@@ -129,44 +128,49 @@ def run_screener(tickers_list_tuple, sector_map_dict,
             if ticker not in hist_data_batch or hist_data_batch[ticker].empty: continue
             df = hist_data_batch[ticker].copy()
             df.dropna(subset=['Adj Close', 'Volume'], inplace=True)
-            if len(df) < 50: continue
-            if filter_sma50_gt_sma200 and len(df) < 200: continue
+            if len(df) < 50: continue # Min length for 50SMA and other calcs
+            if filter_sma50_gt_sma200 and len(df) < 200: continue # Min length for 200SMA
 
             latest_close = df['Adj Close'].iloc[-1]
             latest_volume = df['Volume'].iloc[-1]
             df['EMA20'] = df['Adj Close'].ewm(span=20, adjust=False).mean()
-            df['SMA50'] = df['Adj Close'].rolling(window=50).mean()
-            if filter_sma50_gt_sma200: df['SMA200'] = df['Adj Close'].rolling(window=200).mean()
-            df['AvgVol20'] = df['Volume'].rolling(window=20).mean()
-            delta = df['Adj Close'].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            df['SMA50'] = df['Adj Close'].rolling(window=50, min_periods=1).mean() # min_periods=1
+            if filter_sma50_gt_sma200: df['SMA200'] = df['Adj Close'].rolling(window=200, min_periods=1).mean() # min_periods=1
+            df['AvgVol20'] = df['Volume'].rolling(window=20, min_periods=1).mean() # min_periods=1
             
-            rs_val = np.nan # Default if loss is zero and gain is zero or NaN
-            if pd.notna(loss.iloc[-1]) and pd.notna(gain.iloc[-1])):
-                if loss.iloc[-1] == 0:
-                    rs_val = np.inf if gain.iloc[-1] > 0 else 0 # Assign 0 if gain is also 0 or negative (RSI=50 or 0)
-                else:
-                    rs_val = gain.iloc[-1] / loss.iloc[-1]
-            elif pd.notna(gain.iloc[-1]) and gain.iloc[-1] > 0 and (pd.isna(loss.iloc[-1]) or loss.iloc[-1] == 0) : # gain >0, loss is effectively zero
-                 rs_val = np.inf
+            # RSI Calculation
+            delta = df['Adj Close'].diff(1)
+            gain_series = delta.where(delta > 0, 0.0).rolling(window=14, min_periods=1).mean()
+            loss_series = (-delta.where(delta < 0, 0.0)).rolling(window=14, min_periods=1).mean()
 
-            df['RSI'] = 100 - (100 / (1 + rs_val)) if pd.notna(rs_val) and rs_val != -1 else 50 # Handle rs_val = -1 from inf/inf if gain=loss=0
+            latest_gain = gain_series.iloc[-1]
+            latest_loss = loss_series.iloc[-1]
+            
+            current_rsi = 50.0 # Default to 50 if calculation is problematic
+            if pd.notna(latest_gain) and pd.notna(latest_loss):
+                if latest_loss == 0:
+                    current_rsi = 100.0 if latest_gain > 0 else 50.0 # RSI 100 if gain > 0, else 50 (neutral)
+                else:
+                    rs = latest_gain / latest_loss
+                    current_rsi = 100.0 - (100.0 / (1.0 + rs))
+            elif pd.notna(latest_gain) and latest_gain > 0: # Loss is NaN or 0, gain is positive
+                 current_rsi = 100.0
+            # If both are NaN, or gain is NaN and loss is not 0, current_rsi remains 50.0
 
             ema20 = df['EMA20'].iloc[-1]
             sma50 = df['SMA50'].iloc[-1]
-            sma200 = df['SMA200'].iloc[-1] if filter_sma50_gt_sma200 and 'SMA200' in df.columns else np.nan
-            rsi = df['RSI'].iloc[-1]
+            sma200 = df['SMA200'].iloc[-1] if filter_sma50_gt_sma200 and 'SMA200' in df.columns and pd.notna(df['SMA200'].iloc[-1]) else np.nan
             avg_vol20 = df['AvgVol20'].iloc[-1]
             
-            if pd.isna(ema20) or pd.isna(sma50) or pd.isna(rsi): continue
-            if filter_sma50_gt_sma200 and pd.isna(sma200): continue
+            if pd.isna(ema20) or pd.isna(sma50) or pd.isna(current_rsi) or pd.isna(avg_vol20): continue
+            if filter_sma50_gt_sma200 and pd.isna(sma200): continue # SMA200 must be valid if filter is on
+
             if filter_price_gt_20ema and (latest_close <= ema20): continue
             if filter_price_gt_50sma and (latest_close <= sma50): continue
-            if filter_sma50_gt_sma200 and (sma50 <= sma200): continue
-            if not (filter_min_rsi <= rsi <= filter_max_rsi): continue
+            if filter_sma50_gt_sma200 and (sma50 <= sma200): continue # sma200 is guaranteed not NaN here if filter is on
+            if not (filter_min_rsi <= current_rsi <= filter_max_rsi): continue
             if filter_apply_vol_buzz:
-                if pd.isna(avg_vol20) or avg_vol20 == 0: continue
+                if avg_vol20 == 0: continue # Avoid division by zero if avg_vol20 is 0
                 if latest_volume < (filter_vol_buzz_factor * avg_vol20): continue
             
             screened_stocks_data.append({
@@ -175,7 +179,8 @@ def run_screener(tickers_list_tuple, sector_map_dict,
                 'Price': latest_close, 'P/E': pe, 'P/B': pb, 'D/E': de,
                 'ROE (%)': roe * 100 if roe is not None else np.nan,
                 'EPS Growth (%)': eps_g * 100 if eps_g is not None else np.nan,
-                'RSI': rsi, 'Volume (M)': latest_volume / 1e6,
+                'RSI': current_rsi, 
+                'Volume (M)': latest_volume / 1e6,
                 'Avg Vol (M)': avg_vol20 / 1e6 if pd.notna(avg_vol20) else np.nan,
                 'Market Cap (Cr)': info.get('marketCap', np.nan) / 1e7 if info.get('marketCap') is not None else np.nan
             })
@@ -244,11 +249,16 @@ else:
         buffer_display = io.StringIO()
         df_display.info(buf=buffer_display)
         s_display = buffer_display.getvalue()
-        st.text_area("`df_display.info()` before styling:", s_display, height=300) # Increased height
+        st.text_area("`df_display.info()` before styling:", s_display, height=300)
         
-        for col in df_display.select_dtypes(include=np.number).columns:
-            if df_display[col].apply(lambda x: isinstance(x, str)).any():
-                st.warning(f"Column {col} is numeric Dtype but contains string instances!")
+        for col in df_display.columns: # Check all columns in df_display
+            if df_display[col].dtype == 'object':
+                # Check if any string in object column cannot be coerced to float (excluding known 'N/A' or '-')
+                # This is a bit complex, easier to rely on df_display.info() for Dtypes
+                pass 
+            elif pd.api.types.is_numeric_dtype(df_display[col]):
+                 if df_display[col].apply(lambda x: isinstance(x, str)).any():
+                    st.warning(f"Column {col} is numeric Dtype but contains string instances!")
     else:
         st.error("`df_display` is NOT a valid DataFrame or is empty right before .style call!")
         st.stop()
@@ -260,10 +270,16 @@ else:
             'ROE (%)': "{:.2f}", 'EPS Growth (%)': "{:.2f}", 'RSI': "{:.2f}",
             'Volume (M)': "{:.2f}", 'Avg Vol (M)': "{:.2f}", 'Market Cap (Cr)': "{:.2f}"
         }
-        actual_formats = {k: v for k, v in float_cols_to_format.items() if k in df_display.columns and pd.api.types.is_numeric_dtype(df_display[k])}
-        
+        # Ensure we only try to format columns that are actually numeric in df_display
+        actual_formats = {}
+        for col_name, fmt_str in float_cols_to_format.items():
+            if col_name in df_display.columns and pd.api.types.is_numeric_dtype(df_display[col_name]):
+                actual_formats[col_name] = fmt_str
+            elif col_name in df_display.columns: # Column exists but is not numeric
+                st.warning(f"Column '{col_name}' is in display but not numeric (Dtype: {df_display[col_name].dtype}). Will not apply float formatting.")
+
         styler = df_display.style.set_na_rep("-")
-        if actual_formats: # Only apply format if there are numeric columns to format
+        if actual_formats: 
             styler = styler.format(actual_formats)
         
     except AttributeError as ae:
