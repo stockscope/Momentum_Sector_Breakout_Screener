@@ -11,29 +11,32 @@ import io
 matplotlib.rcParams['axes.unicode_minus'] = False
 
 st.set_page_config(layout="wide")
-st.title("📈 NIFTY 500: Fair Value & Uptrend Screener for Bull Run")
-st.markdown("Identifies NIFTY 500 stocks with reasonable valuation and strong uptrend potential.")
+st.title("📈 NIFTY 500: Fair Value & Uptrend Screener (Relaxed Criteria)")
+st.markdown("Identifies NIFTY 500 stocks with more lenient valuation and uptrend signals.")
 
-# --- Define Fixed Screening Criteria ---
-FIXED_MAX_PE = 35.0
-FIXED_MAX_PEG = 1.5 
-FIXED_MAX_PB = 6.0
-FIXED_MAX_DE = 1.5 
-FIXED_MIN_ROE_PERCENT = 15.0
-FIXED_MIN_EPS_GROWTH_PERCENT = 5.0 
-FIXED_PRICE_GT_50SMA = True
-FIXED_PRICE_GT_200SMA = True 
-FIXED_SMA50_GT_SMA200 = True 
-FIXED_MIN_RSI = 45
-FIXED_MAX_RSI = 75 
-FIXED_APPLY_VOLUME_BUZZ = True
-FIXED_VOLUME_BUZZ_FACTOR = 1.3 
+# --- Define Fixed Screening Criteria (FULL RELAXED) ---
+# Fundamental (More Relaxed)
+FIXED_MAX_PE = 60.0       
+FIXED_MAX_PEG = 3.0       
+FIXED_MAX_PB = 10.0       
+FIXED_MAX_DE = 2.5        
+FIXED_MIN_ROE_PERCENT = 5.0 
+FIXED_MIN_EPS_GROWTH_PERCENT = -10.0 
 
-with st.expander("🧠 **Screening Philosophy & Fixed Criteria Used**", expanded=True):
+# Technical (More Relaxed)
+FIXED_PRICE_GT_50SMA = True     
+FIXED_PRICE_GT_200SMA = False   # RELAXED 
+FIXED_SMA50_GT_SMA200 = False   # RELAXED 
+FIXED_MIN_RSI = 30              
+FIXED_MAX_RSI = 85              
+FIXED_APPLY_VOLUME_BUZZ = True  
+FIXED_VOLUME_BUZZ_FACTOR = 1.0  
+
+with st.expander("🧠 **Screening Philosophy & Fixed Criteria Used (Relaxed)**", expanded=True):
     st.markdown(f"""
-    This screener aims to find companies that are reasonably valued (not excessively expensive) and are already demonstrating strong technical uptrends, making them potential candidates to perform well in a continued market upswing.
+    This screener uses **relaxed criteria** to identify a broader range of companies that might offer reasonable value and are showing some signs of an uptrend.
 
-    **Fundamental Filters:**
+    **Fundamental Filters (Relaxed):**
     - **Max P/E Ratio (Trailing):** {FIXED_MAX_PE}
     - **Max PEG Ratio:** {FIXED_MAX_PEG}
     - **Max P/B Ratio:** {FIXED_MAX_PB}
@@ -41,7 +44,7 @@ with st.expander("🧠 **Screening Philosophy & Fixed Criteria Used**", expanded
     - **Min ROE (Return on Equity):** {FIXED_MIN_ROE_PERCENT}%
     - **Min EPS Growth (Quarterly, YoY):** {FIXED_MIN_EPS_GROWTH_PERCENT}%
 
-    **Technical Trend Filters:**
+    **Technical Trend Filters (Relaxed):**
     - **Price > 50-Day SMA:** {'Yes' if FIXED_PRICE_GT_50SMA else 'No'}
     - **Price > 200-Day SMA:** {'Yes' if FIXED_PRICE_GT_200SMA else 'No'}
     - **50-Day SMA > 200-Day SMA (Golden Cross):** {'Yes' if FIXED_SMA50_GT_SMA200 else 'No'}
@@ -137,6 +140,7 @@ def run_screener(tickers_list_tuple, sector_map_dict,
             min_days_for_52wh = 200 
 
             if len(df) < min_days_for_50ma: continue
+            # Only require 200 days if the specific filters needing 200MA are active
             if (filter_sma50_gt_sma200 or filter_price_gt_200sma) and len(df) < min_days_for_200ma: continue
 
             latest_close = df['Adj Close'].iloc[-1]
@@ -169,12 +173,14 @@ def run_screener(tickers_list_tuple, sector_map_dict,
             latest_52w_high = df['52W_High_Val'].iloc[-1] if '52W_High_Val' in df.columns and pd.notna(df['52W_High_Val'].iloc[-1]) else np.nan
             avg_vol20 = df['AvgVol20'].iloc[-1]
             
+            # Check essential technicals that are always calculated
             if pd.isna(sma50) or pd.isna(current_rsi) or pd.isna(avg_vol20): continue
+            # Check technicals that depend on filters
             if (filter_sma50_gt_sma200 or filter_price_gt_200sma) and pd.isna(sma200): continue
 
             if filter_price_gt_50sma and (latest_close <= sma50): continue
-            if filter_price_gt_200sma and (latest_close <= sma200): continue
-            if filter_sma50_gt_sma200 and (sma50 <= sma200): continue
+            if filter_price_gt_200sma and (latest_close <= sma200): continue # Will only apply if sma200 is valid
+            if filter_sma50_gt_sma200 and (sma50 <= sma200): continue # Will only apply if sma200 is valid
             if not (filter_min_rsi <= current_rsi <= filter_max_rsi): continue
             if filter_apply_vol_buzz:
                 if avg_vol20 == 0: continue 
@@ -206,11 +212,12 @@ def run_screener(tickers_list_tuple, sector_map_dict,
                 df_result[col] = pd.to_numeric(df_result[col], errors='coerce')
     return df_result
 
+# --- Main App Logic ---
 with st.spinner("📜 Loading NIFTY 500 list..."):
     tickers_list, sector_map = load_nifty500_list()
 if not tickers_list: st.error("Failed to load stock list."); st.stop()
 
-with st.spinner(f"🔎 Screening NIFTY 500 stocks... This can take several minutes."):
+with st.spinner(f"🔎 Screening NIFTY 500 stocks with relaxed criteria... This can take several minutes."):
     df_screened_raw = run_screener( 
         tuple(tickers_list), sector_map,
         FIXED_MAX_PE, FIXED_MAX_PEG, FIXED_MAX_PB, FIXED_MAX_DE, FIXED_MIN_ROE_PERCENT, FIXED_MIN_EPS_GROWTH_PERCENT,
@@ -219,10 +226,10 @@ with st.spinner(f"🔎 Screening NIFTY 500 stocks... This can take several minut
     )
 
 st.markdown(f"---")
-st.subheader(f"📊 Screened Stocks ({len(df_screened_raw)} found)")
+st.subheader(f"📊 Screened Stocks ({len(df_screened_raw)} found using relaxed criteria)")
 
 if df_screened_raw.empty:
-    st.info("No stocks matched all the fixed screening criteria. Consider relaxing criteria if consistently no results.")
+    st.info("No stocks matched even the relaxed screening criteria. Market conditions might be unusual or fundamental data coverage is sparse.")
 else:
     cols_display_order = ['Industry', 'Price', 'P/E','PEG', 'P/B', 'D/E', 'ROE (%)', 'EPS Gr. (%)', 
                           'RSI', 'Dist 52WH (%)', 'Vol (M)', 'AvgVol (M)', 'MCap (Cr)']
@@ -251,7 +258,7 @@ else:
         st.dataframe(df_screened_raw)
         st.stop()
     
-    # Debug df_display types before styling (optional - uncomment if issues persist)
+    # Optional: Debug df_display types before styling (uncomment if issues persist)
     # buffer_display = io.StringIO()
     # df_display.info(buf=buffer_display)
     # s_display = buffer_display.getvalue()
@@ -269,7 +276,6 @@ else:
             if col_name in df_display.columns and pd.api.types.is_numeric_dtype(df_display[col_name]):
                 actual_formats[col_name] = fmt_str
         
-        # Corrected Styler initialization and formatting
         styler = df_display.style.format(formatter=actual_formats if actual_formats else None, na_rep="-")
         
     except AttributeError as ae: 
@@ -281,13 +287,13 @@ else:
         st.text_area("Styling Traceback:", traceback.format_exc(), height=300)
         st.stop()
         
-    df_height = min((len(df_display) + 1) * 35 + 3, 700)
+    df_height = min((len(df_display) + 1) * 35 + 3, 700) # Dynamic height
     st.dataframe(styler, use_container_width=True, height=df_height)
 
     csv = df_screened_raw.to_csv(index=False).encode('utf-8')
     st.download_button(
         label="📥 Download Screened Data as CSV", data=csv,
-        file_name=f"nifty500_fair_value_uptrend_{datetime.today().strftime('%Y%m%d')}.csv",
+        file_name=f"nifty500_fair_value_uptrend_relaxed_{datetime.today().strftime('%Y%m%d')}.csv", # Updated filename
         mime='text/csv')
 
 st.markdown("---")
