@@ -95,7 +95,8 @@ def get_stock_info(ticker_str):
             'returnOnEquity', 'earningsQuarterlyGrowth', 'beta', 
             'marketCap', 'industry', 'sector', 'previousClose', 'volume', 'averageVolume'
         ]
-        filtered_info = {k: info.get(k) for k in keys_to_extract} # Keep None if that's what yf returns
+        # Return info.get(k) which can be None, to be handled later by pd.to_numeric
+        filtered_info = {k: info.get(k) for k in keys_to_extract} 
         return filtered_info
     except Exception:
         return {}
@@ -115,14 +116,13 @@ def run_screener(tickers_list_tuple, sector_map_dict,
             info = get_stock_info(ticker)
             pe = info.get('trailingPE')
             pb = info.get('priceToBook')
-            de = info.get('debtToEquity')
+            de = info.get('debtToEquity') # This can be None
             roe = info.get('returnOnEquity')
             eps_g = info.get('earningsQuarterlyGrowth')
 
-            # Apply Fundamental Filters - Skip if metric is None OR fails condition
             if pe is not None and (pe > filter_max_pe or pe <= 0): continue
             if pb is not None and (pb > filter_max_pb or pb <= 0): continue
-            if de is not None and de > filter_max_de: continue # Note: D/E can be None if not available
+            if de is not None and de > filter_max_de: continue 
             if roe is not None and roe < (filter_min_roe_pct / 100.0): continue
             if eps_g is not None and eps_g < (filter_min_eps_g_pct / 100.0): continue
             
@@ -141,11 +141,17 @@ def run_screener(tickers_list_tuple, sector_map_dict,
             delta = df['Adj Close'].diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-            # Handle division by zero for rs
-            if loss.iloc[-1] == 0: rs_val = np.inf if gain.iloc[-1] > 0 else 0 
-            else: rs_val = gain.iloc[-1] / loss.iloc[-1]
-            df['RSI'] = 100 - (100 / (1 + rs_val))
+            
+            rs_val = np.nan # Default if loss is zero and gain is zero or NaN
+            if pd.notna(loss.iloc[-1]) and pd.notna(gain.iloc[-1])):
+                if loss.iloc[-1] == 0:
+                    rs_val = np.inf if gain.iloc[-1] > 0 else 0 # Assign 0 if gain is also 0 or negative (RSI=50 or 0)
+                else:
+                    rs_val = gain.iloc[-1] / loss.iloc[-1]
+            elif pd.notna(gain.iloc[-1]) and gain.iloc[-1] > 0 and (pd.isna(loss.iloc[-1]) or loss.iloc[-1] == 0) : # gain >0, loss is effectively zero
+                 rs_val = np.inf
 
+            df['RSI'] = 100 - (100 / (1 + rs_val)) if pd.notna(rs_val) and rs_val != -1 else 50 # Handle rs_val = -1 from inf/inf if gain=loss=0
 
             ema20 = df['EMA20'].iloc[-1]
             sma50 = df['SMA50'].iloc[-1]
@@ -166,9 +172,9 @@ def run_screener(tickers_list_tuple, sector_map_dict,
             screened_stocks_data.append({
                 'Ticker': ticker,
                 'Industry': sector_map_dict.get(ticker, info.get('industry', 'N/A')),
-                'Price': latest_close, 'P/E': pe, 'P/B': pb, 'D/E': de, # Keep original types here
-                'ROE (%)': roe * 100 if roe is not None else np.nan, # Convert to %
-                'EPS Growth (%)': eps_g * 100 if eps_g is not None else np.nan, # Convert to %
+                'Price': latest_close, 'P/E': pe, 'P/B': pb, 'D/E': de,
+                'ROE (%)': roe * 100 if roe is not None else np.nan,
+                'EPS Growth (%)': eps_g * 100 if eps_g is not None else np.nan,
                 'RSI': rsi, 'Volume (M)': latest_volume / 1e6,
                 'Avg Vol (M)': avg_vol20 / 1e6 if pd.notna(avg_vol20) else np.nan,
                 'Market Cap (Cr)': info.get('marketCap', np.nan) / 1e7 if info.get('marketCap') is not None else np.nan
@@ -182,14 +188,13 @@ def run_screener(tickers_list_tuple, sector_map_dict,
         for col in numeric_cols:
             if col in df_result.columns:
                 df_result[col] = pd.to_numeric(df_result[col], errors='coerce')
-                # Rounding will be handled by Styler's precision or specific formats
     return df_result
 
 with st.spinner("📜 Loading NIFTY 500 list..."):
     tickers_list, sector_map = load_nifty500_list()
 if not tickers_list: st.error("Failed to load stock list."); st.stop()
 
-with st.spinner(f"🔎 Screening NIFTY 500 stocks... This might take {int(len(tickers_list)*0.3)}-{int(len(tickers_list)*1)} seconds."): # Adjusted time estimate
+with st.spinner(f"🔎 Screening NIFTY 500 stocks... This might take {int(len(tickers_list)*0.3)}-{int(len(tickers_list)*1)} seconds."):
     df_screened_raw = run_screener( tuple(tickers_list), sector_map,
         FIXED_MAX_PE, FIXED_MAX_PB, FIXED_MAX_DE, FIXED_MIN_ROE_PERCENT, FIXED_MIN_EPS_GROWTH_PERCENT,
         FIXED_PRICE_GT_20EMA, FIXED_PRICE_GT_50SMA, FIXED_SMA50_GT_SMA200,
@@ -201,17 +206,6 @@ st.subheader(f"📊 Screened Stocks ({len(df_screened_raw)} found)")
 if df_screened_raw.empty:
     st.info("No stocks matched all the fixed screening criteria.")
 else:
-    # --- Start Debugging Block ---
-    # st.write("--- Debug Info ---")
-    # st.write("`df_screened_raw` (first 5 rows):")
-    # st.dataframe(df_screened_raw.head())
-    # st.write("Columns in `df_screened_raw`:", df_screened_raw.columns.tolist())
-    # buffer = io.StringIO()
-    # df_screened_raw.info(buf=buffer)
-    # s = buffer.getvalue()
-    # st.text_area("`df_screened_raw.info()`:", s, height=200)
-    # --- End Debugging Block ---
-
     cols_display_order = ['Industry', 'Price', 'P/E', 'P/B', 'D/E', 'ROE (%)', 'EPS Growth (%)', 
                           'RSI', 'Volume (M)', 'Avg Vol (M)', 'Market Cap (Cr)']
     
@@ -220,57 +214,67 @@ else:
         st.stop()
 
     try:
-        # Ensure df_screened_raw is a DataFrame and not empty before setting index
         if not isinstance(df_screened_raw, pd.DataFrame) or df_screened_raw.empty:
-            st.error("`df_screened_raw` is not a valid DataFrame or is empty before setting index.")
+            st.error("`df_screened_raw` is not valid or empty before setting index.")
             st.stop()
-            
         df_display_intermediate = df_screened_raw.set_index('Ticker')
-        # st.write("`df_display_intermediate` (first 5 rows, after set_index):")
-        # st.dataframe(df_display_intermediate.head())
-        # st.write("Columns in `df_display_intermediate`:", df_display_intermediate.columns.tolist())
-
         actual_cols_to_display = [col for col in cols_display_order if col in df_display_intermediate.columns]
-        # st.write("`actual_cols_to_display` (columns selected for final display):", actual_cols_to_display)
-        
         if not actual_cols_to_display:
-            st.error("Critical Error: No common columns for display. `actual_cols_to_display` is empty.")
+            st.error("Critical Error: No common columns for display.")
             st.stop()
-            
         df_display = df_display_intermediate[actual_cols_to_display].copy()
-        # st.write("`df_display` (final for styling, first 5 rows):")
-        # st.dataframe(df_display.head())
-
     except Exception as e:
         st.error(f"Error creating df_display: {e}")
-        st.write("Details of df_screened_raw when error occurred:")
         st.dataframe(df_screened_raw)
         st.stop()
 
     if not isinstance(df_display, pd.DataFrame) or df_display.empty :
-        st.warning("`df_display` became invalid or empty after processing. Check data and column selection.")
-        st.write("Content of `df_screened_raw` that led to this:")
+        st.warning("`df_display` became invalid or empty. Check data.")
         st.dataframe(df_screened_raw)
         st.stop()
 
-    # --- MORE DEBUGGING RIGHT BEFORE THE ERROR ---
-    # st.write("--- State of `df_display` BEFORE `.style` ---")
-    # st.write(f"Is `df_display` a DataFrame? {isinstance(df_display, pd.DataFrame)}")
-    # st.write(f"Is `df_display` empty? {df_display.empty}")
-    # if isinstance(df_display, pd.DataFrame) and not df_display.empty:
-    #     st.write(f"Shape of `df_display`: {df_display.shape}")
-    #     st.write("`df_display.head()` right before `.style` call:")
-    #     st.dataframe(df_display.head())
-    #     buffer_display = io.StringIO()
-    #     df_display.info(buf=buffer_display)
-    #     s_display = buffer_display.getvalue()
-    #     st.text_area("`df_display.info()`:", s_display, height=200)
-    # else:
-    #     st.error("`df_display` is NOT a valid DataFrame or is empty right before .style call!")
-    #     st.stop()
-    # --- END MORE DEBUGGING ---
+    # --- DEBUGGING RIGHT BEFORE THE ERROR ---
+    st.write("--- State of `df_display` BEFORE `.style` ---")
+    st.write(f"Is `df_display` a DataFrame? {isinstance(df_display, pd.DataFrame)}")
+    st.write(f"Is `df_display` empty? {df_display.empty}")
+    if isinstance(df_display, pd.DataFrame) and not df_display.empty:
+        st.write(f"Shape of `df_display`: {df_display.shape}")
+        st.write("`df_display.head()` right before `.style` call:")
+        st.dataframe(df_display.head()) 
+        buffer_display = io.StringIO()
+        df_display.info(buf=buffer_display)
+        s_display = buffer_display.getvalue()
+        st.text_area("`df_display.info()` before styling:", s_display, height=300) # Increased height
+        
+        for col in df_display.select_dtypes(include=np.number).columns:
+            if df_display[col].apply(lambda x: isinstance(x, str)).any():
+                st.warning(f"Column {col} is numeric Dtype but contains string instances!")
+    else:
+        st.error("`df_display` is NOT a valid DataFrame or is empty right before .style call!")
+        st.stop()
+    # --- END DEBUGGING ---
 
-    styler = df_display.style.set_na_rep("-").format(precision=2) 
+    try:
+        float_cols_to_format = {
+            'Price': "{:.2f}", 'P/E': "{:.2f}", 'P/B': "{:.2f}", 'D/E': "{:.2f}",
+            'ROE (%)': "{:.2f}", 'EPS Growth (%)': "{:.2f}", 'RSI': "{:.2f}",
+            'Volume (M)': "{:.2f}", 'Avg Vol (M)': "{:.2f}", 'Market Cap (Cr)': "{:.2f}"
+        }
+        actual_formats = {k: v for k, v in float_cols_to_format.items() if k in df_display.columns and pd.api.types.is_numeric_dtype(df_display[k])}
+        
+        styler = df_display.style.set_na_rep("-")
+        if actual_formats: # Only apply format if there are numeric columns to format
+            styler = styler.format(actual_formats)
+        
+    except AttributeError as ae:
+        st.error(f"AttributeError during styling: {ae}")
+        st.stop()
+    except Exception as e:
+        st.error(f"An unexpected error occurred during styling: {e}")
+        import traceback
+        st.text_area("Traceback:", traceback.format_exc(), height=300)
+        st.stop()
+        
     df_height = min((len(df_display) + 1) * 35 + 3, 700)
     st.dataframe(styler, use_container_width=True, height=df_height)
 
