@@ -1,5 +1,7 @@
 # Home.py
 import streamlit as st
+import os # Import the os module
+from pathlib import Path # For more robust path handling
 
 # Page Configuration for Home page - sidebar initially collapsed
 st.set_page_config(
@@ -12,6 +14,7 @@ st.set_page_config(
 # --- Custom CSS ---
 st.markdown("""
     <style>
+        /* ... (Your existing CSS for cards, etc.) ... */
         [data-testid="stSidebar"] {
             background-color: #f0f2f6; 
         }
@@ -25,9 +28,6 @@ st.markdown("""
             color: #2c3e50; 
             text-align: center;
         }
-        /* Removed h2, h3 styling for now as the "Our Screeners" header is removed */
-        /* If you add other h2/h3, you might want to re-add specific styling */
-
         .card {
             background-color: white;
             padding: 1.5rem;
@@ -37,6 +37,7 @@ st.markdown("""
             transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
             border: 1px solid #e0e0e0;
             display: block; 
+            height: 100%; /* Make cards in a row same height */
         }
         .card:hover {
             transform: translateY(-5px);
@@ -58,8 +59,8 @@ st.markdown("""
         }
         hr {
             border-top: 1px solid #eee;
-            margin-top: 1.5rem; /* Adjusted margin */
-            margin-bottom: 1.5rem; /* Adjusted margin */
+            margin-top: 1.5rem;
+            margin-bottom: 1.5rem;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -67,48 +68,79 @@ st.markdown("""
 
 # --- Page Content ---
 st.title("📈 Welcome to StockScopePro!")
-# Removed the introductory markdown here
 st.markdown("---") 
-
-# Removed the "Our Screeners" header
 st.markdown("Select a screener to begin your analysis:")
 
-col1, col2 = st.columns(2)
+# --- Dynamic Screener Listing ---
+PAGES_DIR = Path("pages") # Define the path to your pages directory
 
-with col1:
-    # Screener 1: NIFTY 200 Momentum
-    # IMPORTANT: Ensure href matches the filename in your 'pages' directory (without .py and leading numbers/underscores if desired for cleaner URLs, Streamlit handles it)
-    # e.g., for "pages/1_NIFTY_200_Screener.py", href="1_NIFTY_200_Screener"
-    st.markdown(
-        """<a href="1_NIFTY_200_Screener" target="_self"><div class="card">
-        <h3>📊 NIFTY 200 Momentum</h3>
-        <p>Identifies breakout or retest setups in top-performing sectors within the NIFTY 200 universe.</p>
-        </div></a>""", unsafe_allow_html=True
-    )
-    # Screener 2: NIFTY 500 Advanced (Moved here to balance columns)
-    st.markdown(
-        """<a href="3_NIFTY_500_Advanced_Screener" target="_self"><div class="card">
-        <h3>⚙️ NIFTY 500 Advanced</h3>
-        <p>Provides advanced filtering options for in-depth analysis of NIFTY 500 stocks. (Update this description!)</p>
-        </div></a>""", unsafe_allow_html=True
-    )
+# Function to generate a user-friendly name from a filename
+def get_page_display_name(filename_with_ext):
+    filename_no_ext = filename_with_ext.stem # Removes .py
+    # Replace underscores with spaces and capitalize words
+    display_name = filename_no_ext.replace("_", " ").title()
+    return display_name
+
+# Function to get a generic description or allow for custom ones
+def get_page_description(filename_no_ext):
+    # You can create a dictionary for custom descriptions if needed
+    custom_descriptions = {
+        "NIFTY_200_Screener": "Identifies breakout or retest setups in top-performing sectors within the NIFTY 200 universe.",
+        "NIFTY_500_Screener": "A broader momentum scan focusing on breakout/retest setups within the NIFTY 500 index.",
+        "NIFTY_500_Advanced_Screener": "Advanced filtering options for in-depth analysis of NIFTY 500 stocks.",
+        "NIFTY_500_Value_Screener": "Scans the NIFTY 500 for stocks that appear reasonably valued and are exhibiting signs of an uptrend."
+    }
+    return custom_descriptions.get(filename_no_ext, "Explore this screener to find potential stock opportunities.")
+
+# Function to get a generic icon or allow for custom ones
+def get_page_icon(filename_no_ext):
+    custom_icons = {
+        "NIFTY_200_Screener": "📊",
+        "NIFTY_500_Screener": "🚀",
+        "NIFTY_500_Advanced_Screener": "⚙️",
+        "NIFTY_500_Value_Screener": "📈"
+    }
+    return custom_icons.get(filename_no_ext, "🛠️")
 
 
-with col2:
-    # Screener 3: NIFTY 500 Momentum
-    st.markdown(
-        """<a href="2_NIFTY_500_Screener" target="_self"><div class="card">
-        <h3>🚀 NIFTY 500 Momentum</h3>
-        <p>A broader momentum scan focusing on breakout/retest setups within the NIFTY 500 index.</p>
-        </div></a>""", unsafe_allow_html=True
-    )
-    # Screener 4: NIFTY 500 Value & Trend
-    st.markdown(
-        """<a href="4_NIFTY_500_Value_Screener" target="_self"><div class="card">
-        <h3>📈 NIFTY 500 Value & Trend</h3>
-        <p>Scans the NIFTY 500 for stocks that appear reasonably valued and are exhibiting signs of an uptrend.</p>
-        </div></a>""", unsafe_allow_html=True
-    )
+if PAGES_DIR.is_dir():
+    # Get .py files, sort them (e.g., alphabetically for consistent order)
+    # Exclude files starting with '.' (like .DS_Store) or '__init__.py'
+    screener_files = sorted([f for f in PAGES_DIR.iterdir() if f.is_file() and f.suffix == '.py' and not f.name.startswith('.') and not f.name == "__init__.py"])
+    
+    if not screener_files:
+        st.info("No screener pages found in the 'pages' directory.")
+    else:
+        # Create columns dynamically based on number of screeners, aiming for 2-3 per row
+        num_screeners = len(screener_files)
+        cols_per_row = 2 # You can adjust this
+        
+        # Create rows of columns
+        for i in range(0, num_screeners, cols_per_row):
+            row_files = screener_files[i : i + cols_per_row]
+            cols = st.columns(len(row_files)) # Create as many columns as files in this row
+            
+            for idx, screener_file_path in enumerate(row_files):
+                filename_no_ext = screener_file_path.stem # e.g., "NIFTY_200_Screener"
+                display_name = get_page_display_name(screener_file_path)
+                description = get_page_description(filename_no_ext)
+                icon = get_page_icon(filename_no_ext)
+                
+                # Streamlit constructs the URL path from the filename in the pages dir
+                # The href should be just the filename without .py
+                href_target = filename_no_ext 
+
+                with cols[idx]:
+                    st.markdown(
+                        f"""<a href="{href_target}" target="_self"><div class="card">
+                        <h3>{icon} {display_name}</h3>
+                        <p>{description}</p>
+                        </div></a>""", 
+                        unsafe_allow_html=True
+                    )
+else:
+    st.warning("The 'pages' directory was not found. Please create it and add your screener Python files there.")
+
 
 st.markdown("---")
 st.subheader("💡 How to Use")
