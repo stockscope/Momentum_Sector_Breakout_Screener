@@ -23,7 +23,7 @@ if 'momentum_screener_index_choice' not in st.session_state:
 
 # --- Static Title and Initial Markdown ---
 st.title("📊 Momentum Sector Breakout Screener")
-st.markdown("Identifies breakout or retest setups in top-performing sectors based on trend, volume, and returns.") # Generic intro
+st.markdown("Identifies breakout or retest setups in top-performing sectors based on trend, volume, and returns.") 
 
 # --- Expander with Dynamic Universe ---
 with st.expander("🧠 **Screening Criteria Used**", expanded=True):
@@ -43,7 +43,7 @@ with st.expander("🧠 **Screening Criteria Used**", expanded=True):
         - Price, 1D/1W/1M Returns, Volume (M), RSI (all numeric to 2 decimal places), Setup Type, Near_52W_High, Vol_Spike
     """)
 
-# --- Helper Functions (load_nifty_list_and_map, fetch_stock_data_from_yfinance, analyze_stocks_and_sectors) ---
+# --- Helper Functions ---
 @st.cache_data(ttl=timedelta(days=1), show_spinner=False)
 def load_nifty_list_and_map(list_name="nifty500"):
     if list_name == "nifty500":
@@ -73,17 +73,17 @@ def fetch_stock_data_from_yfinance(tickers_tuple, start_date_str, end_date_str):
     if not tickers_list: return {}
     stock_data_downloaded = yf.download(
         tickers_list, start=start_date_str, end=end_date_str, interval='1d', 
-        group_by='ticker', auto_adjust=False, progress=False, timeout=90
+        group_by='ticker', auto_adjust=False, progress=False, timeout=120 # Increased timeout
     )
     stock_data_processed = {}
     if stock_data_downloaded.empty: return {}
     if isinstance(stock_data_downloaded.columns, pd.MultiIndex):
         for ticker in tickers_list:
             try:
-                if ticker in stock_data_downloaded and isinstance(stock_data_downloaded[ticker], pd.DataFrame):
+                if ticker in stock_data_downloaded and isinstance(stock_data_downloaded[ticker], pd.DataFrame) and not stock_data_downloaded[ticker].empty: # check not empty
                     stock_data_processed[ticker] = stock_data_downloaded[ticker]
             except KeyError: pass
-    elif len(tickers_list) == 1 and isinstance(stock_data_downloaded, pd.DataFrame):
+    elif len(tickers_list) == 1 and isinstance(stock_data_downloaded, pd.DataFrame) and not stock_data_downloaded.empty: # check not empty
         stock_data_processed[tickers_list[0]] = stock_data_downloaded
     return stock_data_processed
 
@@ -97,63 +97,93 @@ def analyze_stocks_and_sectors(downloaded_stock_data, tickers_tuple, sector_map_
             if ticker not in downloaded_stock_data or downloaded_stock_data[ticker].empty: continue
             df = downloaded_stock_data[ticker].copy()
             df.dropna(subset=['Adj Close', 'High', 'Low', 'Open', 'Volume'], inplace=True)
-            if len(df) < 252: continue # Ensure enough data for 52W_High
+            
+            if len(df) < 22: # Min for 1M return, 20D indicators. 52W high might be NaN.
+                continue
 
-            df['50EMA'] = df['Adj Close'].ewm(span=50, adjust=False).mean()
+            df['50EMA'] = df['Adj Close'].ewm(span=50, adjust=False, min_periods=40).mean()
             df['20D_High'] = df['High'].rolling(window=20, min_periods=15).max()
-            df['52W_High'] = df['High'].rolling(window=252, min_periods=200).max()
+            df['52W_High'] = df['High'].rolling(window=252, min_periods=200).max() 
             df['Avg_Vol_20D'] = df['Volume'].rolling(window=20, min_periods=15).mean()
 
             delta = df['Adj Close'].diff(1)
             gain_series = delta.where(delta > 0, 0.0).rolling(window=14, min_periods=1).mean()
             loss_series = (-delta.where(delta < 0, 0.0)).rolling(window=14, min_periods=1).mean()
-            latest_gain = gain_series.iloc[-1]
-            latest_loss = loss_series.iloc[-1]
-            current_rsi = 50.0 
-            if pd.notna(latest_gain) and pd.notna(latest_loss):
-                if latest_loss == 0: current_rsi = 100.0 if latest_gain > 0 else 50.0 
-                else: current_rsi = 100.0 - (100.0 / (1.0 + (latest_gain / latest_loss)))
-            elif pd.notna(latest_gain) and latest_gain > 0: current_rsi = 100.0
             
-            if df[['50EMA', '20D_High', '52W_High', 'Avg_Vol_20D']].iloc[-1].isnull().any() or pd.isna(current_rsi): continue
+            current_rsi = 50.0 # Default
+            if not gain_series.empty and not loss_series.empty:
+                latest_gain = gain_series.iloc[-1]
+                latest_loss = loss_series.iloc[-1]
+                if pd.notna(latest_gain) and pd.notna(latest_loss):
+                    if latest_loss == 0: current_rsi = 100.0 if latest_gain > 0 else 50.0 
+                    else: 
+                        rs_val = latest_gain / latest_loss
+                        current_rsi = 100.0 - (100.0 / (1.0 + rs_val))
+                elif pd.notna(latest_gain) and latest_gain > 0: current_rsi = 100.0
+            
+            # Check essential indicators (excluding 52W_High, which is handled in setup)
+            if df[['50EMA', '20D_High', 'Avg_Vol_20D']].iloc[-1].isnull().any() or pd.isna(current_rsi):
+                continue
+
             latest = df.iloc[-1]
+            if len(df) < 2: continue 
             prev_day_adj_close = df['Adj Close'].iloc[-2]
             prev_week_adj_close = df['Adj Close'].iloc[-6] if len(df) >=6 else np.nan
             month_ago_adj_close = df['Adj Close'].iloc[-22] if len(df) >=22 else np.nan
+
             return_1d = ((latest['Adj Close'] - prev_day_adj_close) / prev_day_adj_close) * 100 if pd.notna(prev_day_adj_close) and prev_day_adj_close != 0 else np.nan
             return_1w = ((latest['Adj Close'] - prev_week_adj_close) / prev_week_adj_close) * 100 if pd.notna(prev_week_adj_close) and prev_week_adj_close != 0 else np.nan
             return_1m = ((latest['Adj Close'] - month_ago_adj_close) / month_ago_adj_close) * 100 if pd.notna(month_ago_adj_close) and month_ago_adj_close != 0 else np.nan
+            
+            if pd.isna(return_1w) or pd.isna(return_1m): continue # Essential for sector perf and sorting
+
             sector = sector_map_dict.get(ticker, 'Unknown')
-            if pd.notna(return_1w): sector_returns_collector.setdefault(sector, []).append(return_1w)
+            sector_returns_collector.setdefault(sector, []).append(return_1w)
+
             vol_spike = (pd.notna(latest['Avg_Vol_20D']) and latest['Avg_Vol_20D'] > 0 and latest['Volume'] > 1.5 * latest['Avg_Vol_20D']) or \
                         (pd.notna(latest['Volume']) and latest['Volume'] > 0 and (pd.isna(latest['Avg_Vol_20D']) or latest['Avg_Vol_20D'] == 0))
-            near_52w_high_info = latest['Adj Close'] >= 0.95 * latest['52W_High'] if pd.notna(latest['52W_High']) else False
+            
+            near_52w_high_info = False
+            if pd.notna(latest['52W_High']):
+                 near_52w_high_info = latest['Adj Close'] >= 0.95 * latest['52W_High']
+
             setup = ""
             if pd.notna(latest['52W_High']) and latest['Adj Close'] >= 0.99 * latest['52W_High']: setup = "Breakout 52w"
             elif pd.notna(latest['20D_High']) and latest['Adj Close'] >= 0.99 * latest['20D_High']: setup = "Breakout"
             elif pd.notna(latest['50EMA']) and latest['Adj Close'] >= latest['50EMA'] and latest['Adj Close'] <= 1.02 * latest['50EMA']: setup = "Retest"
+            
             if pd.isna(latest['Adj Close']) or pd.isna(latest['Volume']) or setup == "": continue
+            
             results.append({
                 'Ticker': ticker, 'Sector': sector, 'Price': round(latest['Adj Close'], 2), 
-                'Return_1D': round(return_1d, 2), 'Return_1W': round(return_1w, 2), 'Return_1M': round(return_1m, 2),
-                '50EMA': round(latest['50EMA'], 2), '20D_High': round(latest['20D_High'], 2),
-                '52W_High': round(latest['52W_High'], 2), 'Near_52W_High': near_52w_high_info,
-                'Setup': setup, 'Volume (M)': round(latest['Volume'] / 1e6, 2),
-                'Avg_Vol_20D (M)': round(latest['Avg_Vol_20D'] / 1e6, 2),
-                'Vol_Spike': vol_spike, 'RSI': round(current_rsi, 2)
+                'Return_1D': round(return_1d, 2) if pd.notna(return_1d) else np.nan,
+                'Return_1W': round(return_1w, 2), 
+                'Return_1M': round(return_1m, 2),
+                '50EMA': round(latest['50EMA'], 2) if pd.notna(latest['50EMA']) else np.nan,
+                '20D_High': round(latest['20D_High'], 2) if pd.notna(latest['20D_High']) else np.nan,
+                '52W_High': round(latest['52W_High'], 2) if pd.notna(latest['52W_High']) else np.nan,
+                'Near_52W_High': near_52w_high_info, 'Setup': setup, 
+                'Volume (M)': round(latest['Volume'] / 1e6, 2),
+                'Avg_Vol_20D (M)': round(latest['Avg_Vol_20D'] / 1e6, 2) if pd.notna(latest['Avg_Vol_20D']) else np.nan,
+                'Vol_Spike': vol_spike, 'RSI': round(current_rsi, 2) if pd.notna(current_rsi) else np.nan
             })
-        except Exception: continue
+        except Exception: 
+            # For debugging: st.sidebar.warning(f"Error processing {ticker}: {e}")
+            continue
+            
     df_all = pd.DataFrame(results)
     if not df_all.empty:
-        df_all.dropna(subset=['Price', 'Ticker', 'Setup'], inplace=True)
+        df_all.dropna(subset=['Price', 'Ticker', 'Setup', 'Return_1W', 'Return_1M'], inplace=True) 
         df_all = df_all[df_all['Setup'] != ""]
     avg_sector_perf = {sec: np.mean([r for r in ret_list if pd.notna(r)]) for sec, ret_list in sector_returns_collector.items() if any(pd.notna(r) for r in ret_list)}
     return df_all, avg_sector_perf
 
 # --- Main App UI & Logic ---
 current_day_iso = datetime.today().strftime('%Y-%m-%d')
-fetch_end_date = current_day_iso
-fetch_start_date = (datetime.today() - timedelta(days=400 + 30)).strftime('%Y-%m-%d')
+# Fetch enough history for 252-day rolling + some buffer for data start alignment
+fetch_start_date = (datetime.today() - timedelta(days=252 + 90)).strftime('%Y-%m-%d') 
+fetch_end_date = (datetime.today() + timedelta(days=1)).strftime('%Y-%m-%d') # Fetch up to tomorrow to ensure today's data if market closed
+
 
 st.markdown("---") 
 
@@ -194,7 +224,7 @@ if st.button(f"🚀 Run Screener for {st.session_state.momentum_screener_index_c
         else:
             with st.spinner(f"⚙️ Processing data for {chosen_index_for_run} and identifying setups..."):
                 df_all_results_run, sector_perf_avg_results_run = analyze_stocks_and_sectors(
-                    downloaded_stock_data, tuple(tickers), sector_map, current_day_iso
+                    downloaded_stock_data, tuple(tickers), sector_map, current_day_iso # current_day_iso not strictly used inside now
                 )
         st.session_state.df_all_results = df_all_results_run
         st.session_state.sector_perf_avg_results = sector_perf_avg_results_run
@@ -204,17 +234,7 @@ if st.button(f"🚀 Run Screener for {st.session_state.momentum_screener_index_c
 if 'df_all_results' in st.session_state and 'sector_perf_avg_results' in st.session_state:
     df_all_results_display = st.session_state.df_all_results 
     sector_perf_avg_results_display = st.session_state.sector_perf_avg_results
-    screened_index_display = st.session_state.get('screened_index', "N/A") 
-
-    # Update Title and Markdown again here if results are shown, to ensure it reflects the *screened* index
-    # This covers the case where the selectbox might change, but results from a previous run are still shown
-    # before the new run button is clicked.
-    # However, the st.rerun() after selectbox change should make this less of an issue.
-    # For safety, we can ensure titles related to results use screened_index_display.
-
-    # st.title(f"📊 Momentum Sector Breakout Screener ({screened_index_display})") # Already set at top by session_state
-    # st.markdown(f"Identifies breakout or retest setups in top-performing sectors for **{screened_index_display}** stocks.") # Already set
-
+    screened_index_display = st.session_state.get('screened_index', st.session_state.momentum_screener_index_choice) 
 
     if df_all_results_display.empty:
         st.warning(f"No stocks met the screening criteria for {screened_index_display} based on the last run.")
@@ -252,7 +272,15 @@ if 'df_all_results' in st.session_state and 'sector_perf_avg_results' in st.sess
             display_cols_order = ['Sector', 'Price', 'Return_1D', 'Return_1W', 'Return_1M', 
                                   'Setup', 'Vol_Spike', 'Near_52W_High', 'Volume (M)', 'RSI']
             cols_to_show_in_df = [col for col in display_cols_order if col in df_filtered.columns]
-            df_display = df_filtered.set_index('Ticker')[cols_to_show_in_df].copy()
+            
+            # Ensure Ticker is a column before setting index if df_filtered was reset badly
+            if 'Ticker' not in df_filtered.columns and df_filtered.index.name == 'Ticker':
+                df_filtered_for_display = df_filtered.reset_index()
+            else:
+                df_filtered_for_display = df_filtered.copy()
+
+
+            df_display = df_filtered_for_display.set_index('Ticker')[cols_to_show_in_df].copy()
 
             def highlight_setup_and_vol_spike(row_series):
                 styles = pd.Series([''] * len(row_series), index=row_series.index)
@@ -299,7 +327,7 @@ if 'df_all_results' in st.session_state and 'sector_perf_avg_results' in st.sess
             ax.legend()
             st.pyplot(fig)
 else:
-    st.info("Select an index and click the 'Run Screener' button to view results.") # Updated initial message
+    st.info("Select an index and click the 'Run Screener' button to view results.")
 
 st.markdown("---")
 st.markdown("Disclaimer: This is an informational tool and not financial advice. Always do your own research before investing.")
