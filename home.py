@@ -8,15 +8,35 @@ st.set_page_config(
     page_title="StockScopePro Hub",
     page_icon="🔍",
     layout="wide",
-    initial_sidebar_state="collapsed" 
+    initial_sidebar_state="collapsed" # Collapsed on the home page
 )
 
 # --- Custom CSS ---
 st.markdown("""
     <style>
+        /* General Sidebar Styling (when visible) */
         [data-testid="stSidebar"] {
             background-color: #f0f2f6; 
         }
+
+        /* Attempt to change sidebar toggle icon to hamburger */
+        /* This targets the button that Streamlit uses for the sidebar toggle */
+        button[kind="header"][title="Open sidebar"] > div > svg,
+        button[kind="header"][title="Close sidebar"] > div > svg {
+            display: none; /* Hide the default SVG arrow icon */
+        }
+
+        button[kind="header"][title="Open sidebar"]::before,
+        button[kind="header"][title="Close sidebar"]::before {
+            content: "☰"; /* Unicode hamburger character */
+            font-size: 1.5em; /* Adjust size as needed */
+            color: #555; /* Adjust color as needed */
+            /* You might need more specific styling to align it perfectly */
+            display: inline-block;
+            padding: 0.25rem 0.5rem; /* Example padding */
+        }
+        
+        /* Main content area styling */
         .main .block-container {
             padding-top: 1rem; 
             padding-bottom: 2rem;
@@ -63,7 +83,6 @@ st.markdown("""
             margin-top: 1rem; 
             margin-bottom: 1rem; 
         }
-        /* Reduce space around the main title and first hr */
         div[data-testid="stHorizontalBlock"] > div:first-child > div[data-testid="stVerticalBlock"] > div:first-child > div[data-testid="stVerticalBlock"] > div:first-child {
             margin-bottom: 0.5rem !important;
         }
@@ -98,7 +117,6 @@ def get_page_display_name_and_href(filename_path_obj):
     return display_name, href_base
 
 def get_page_description(href_base_name):
-    # IMPORTANT: Update keys to match base filenames (without number prefixes)
     custom_descriptions = {
         "NIFTY_200_Screener": "Identifies breakout or retest setups in top-performing sectors within the NIFTY 200 universe.",
         "NIFTY_500_Screener": "A broader momentum scan focusing on breakout/retest setups within the NIFTY 500 index.",
@@ -108,7 +126,6 @@ def get_page_description(href_base_name):
     return custom_descriptions.get(href_base_name, "Explore this screener to find potential stock opportunities.")
 
 def get_page_icon(href_base_name):
-    # IMPORTANT: Update keys to match base filenames (without number prefixes)
     custom_icons = {
         "NIFTY_200_Screener": "📊", 
         "NIFTY_500_Screener": "🚀", 
@@ -127,6 +144,7 @@ if PAGES_DIR.is_dir():
     if not screener_files:
         st.info("No screener pages found in the 'pages' directory.")
     else:
+        # Debug output removed from here as requested
         num_screeners = len(screener_files)
         cols_per_row = 2 
         
@@ -147,7 +165,7 @@ if PAGES_DIR.is_dir():
                         </div></a>""", 
                         unsafe_allow_html=True
                     )
-            for j in range(len(row_files), cols_per_row): # Fill empty columns if any
+            for j in range(len(row_files), cols_per_row): 
                 with cols[j]:
                     st.empty() 
 else:
@@ -158,7 +176,7 @@ st.subheader("💡 How to Use")
 st.markdown(
     """
     1.  **Click on a Screener Card:** Choose one of the screeners listed above.
-    2.  **Sidebar Navigation (on Screener Pages):** Once on a screener page, the sidebar will appear, allowing you to switch between different screeners easily. Streamlit also adds discovered pages to the sidebar automatically.
+    2.  **Sidebar Navigation (on Screener Pages):** Once on a screener page, the sidebar will appear (if it was initially collapsed on the home page and set to expand on screener pages). Streamlit also adds discovered pages to the sidebar menu automatically.
     3.  **Understand Criteria:** Each screener page explains the specific criteria used for stock selection.
     4.  **Analyze & Download:** Review the results table and download data for your own further research.
     """
