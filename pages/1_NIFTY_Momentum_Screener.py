@@ -14,20 +14,21 @@ matplotlib.rcParams['axes.unicode_minus'] = False
 st.set_page_config(
     page_title="Momentum Sector Screener - StockScopePro", 
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded" 
 )
 
 # --- Initialize session state for index choice ---
 if 'momentum_screener_index_choice' not in st.session_state:
     st.session_state.momentum_screener_index_choice = "NIFTY 500" # Default value
 
-# --- Display elements that depend on index_choice (using session_state) ---
-st.title(f"📊 Momentum Sector Breakout Screener ({st.session_state.momentum_screener_index_choice})")
-st.markdown(f"Identifies breakout or retest setups in top-performing sectors for **{st.session_state.momentum_screener_index_choice}** stocks.")
+# --- Static Title and Initial Markdown ---
+st.title("📊 Momentum Sector Breakout Screener")
+st.markdown("Identifies breakout or retest setups in top-performing sectors based on trend, volume, and returns.") # Generic intro
 
+# --- Expander with Dynamic Universe ---
 with st.expander("🧠 **Screening Criteria Used**", expanded=True):
     st.markdown(f"""
-    - **Universe**: {st.session_state.momentum_screener_index_choice} stocks
+    - **Universe**: {st.session_state.momentum_screener_index_choice} stocks 
     - **Top Sectors**: Stocks shown are from the **top 5 performing sectors** based on average **1-week return**.
     - **Setup Detection (Stricter & New)**:
         - 🌟 **Breakout 52w**: Close ≥ **99%** of 52-week High (New, takes precedence)
@@ -43,8 +44,6 @@ with st.expander("🧠 **Screening Criteria Used**", expanded=True):
     """)
 
 # --- Helper Functions (load_nifty_list_and_map, fetch_stock_data_from_yfinance, analyze_stocks_and_sectors) ---
-# These functions remain unchanged from the previous correct version.
-# For brevity, I'll skip pasting them again here, but assume they are present.
 @st.cache_data(ttl=timedelta(days=1), show_spinner=False)
 def load_nifty_list_and_map(list_name="nifty500"):
     if list_name == "nifty500":
@@ -98,7 +97,7 @@ def analyze_stocks_and_sectors(downloaded_stock_data, tickers_tuple, sector_map_
             if ticker not in downloaded_stock_data or downloaded_stock_data[ticker].empty: continue
             df = downloaded_stock_data[ticker].copy()
             df.dropna(subset=['Adj Close', 'High', 'Low', 'Open', 'Volume'], inplace=True)
-            if len(df) < 252: continue
+            if len(df) < 252: continue # Ensure enough data for 52W_High
 
             df['50EMA'] = df['Adj Close'].ewm(span=50, adjust=False).mean()
             df['20D_High'] = df['High'].rolling(window=20, min_periods=15).max()
@@ -152,54 +151,30 @@ def analyze_stocks_and_sectors(downloaded_stock_data, tickers_tuple, sector_map_
     return df_all, avg_sector_perf
 
 # --- Main App UI & Logic ---
-
-# === SECTION MOVED DOWN: User selection for Index Universe ===
-# This will now be placed just above the button
-# index_options = ["NIFTY 500", "NIFTY 200"]
-# index_choice = st.selectbox(
-#     "Select Index Universe:", 
-#     index_options, 
-#     index=index_options.index(st.session_state.momentum_screener_index_choice),
-#     key="momentum_screener_selectbox" 
-# )
-# st.session_state.momentum_screener_index_choice = index_choice
-# === END SECTION MOVED DOWN ===
-
-
 current_day_iso = datetime.today().strftime('%Y-%m-%d')
 fetch_end_date = current_day_iso
-fetch_start_date = (datetime.today() - timedelta(days=400 + 30)).strftime('%Y-%m-%d') # Extra buffer for rolling calcs
+fetch_start_date = (datetime.today() - timedelta(days=400 + 30)).strftime('%Y-%m-%d')
 
-# --- Position Selectbox and Button here ---
-st.markdown("---") # Optional separator
+st.markdown("---") 
 
 index_options = ["NIFTY 500", "NIFTY 200"]
-# Get current selection from session state for the selectbox
 current_selection_index = index_options.index(st.session_state.momentum_screener_index_choice)
 
 index_choice_from_selectbox = st.selectbox(
     "Select Index Universe to Scan:", 
     index_options, 
     index=current_selection_index,
-    key="momentum_screener_selectbox_main" # Use a unique key
+    key="momentum_screener_selectbox_main" 
 )
 
-# IMPORTANT: Update session state immediately if selectbox changes.
-# This ensures that if the script reruns for any other reason, it uses the latest selection.
 if st.session_state.momentum_screener_index_choice != index_choice_from_selectbox:
     st.session_state.momentum_screener_index_choice = index_choice_from_selectbox
-    # Clear previous results if the index choice changes before running
-    if 'df_all_results' in st.session_state:
-        del st.session_state.df_all_results
-    if 'sector_perf_avg_results' in st.session_state:
-        del st.session_state.sector_perf_avg_results
-    if 'screened_index' in st.session_state:
-        del st.session_state.screened_index
-    st.rerun() # Rerun to update titles and other UI elements that depend on the choice
-
+    if 'df_all_results' in st.session_state: del st.session_state.df_all_results
+    if 'sector_perf_avg_results' in st.session_state: del st.session_state.sector_perf_avg_results
+    if 'screened_index' in st.session_state: del st.session_state.screened_index
+    st.rerun() 
 
 if st.button(f"🚀 Run Screener for {st.session_state.momentum_screener_index_choice}", type="primary"):
-    # Use the value from session state for processing
     chosen_index_for_run = st.session_state.momentum_screener_index_choice
     list_to_load = "nifty500" if chosen_index_for_run == "NIFTY 500" else "nifty200"
 
@@ -221,17 +196,25 @@ if st.button(f"🚀 Run Screener for {st.session_state.momentum_screener_index_c
                 df_all_results_run, sector_perf_avg_results_run = analyze_stocks_and_sectors(
                     downloaded_stock_data, tuple(tickers), sector_map, current_day_iso
                 )
-        
         st.session_state.df_all_results = df_all_results_run
         st.session_state.sector_perf_avg_results = sector_perf_avg_results_run
         st.session_state.screened_index = chosen_index_for_run
         st.rerun()
 
-# Display results if they exist in session state
 if 'df_all_results' in st.session_state and 'sector_perf_avg_results' in st.session_state:
-    df_all_results_display = st.session_state.df_all_results # Use a different var name for clarity
+    df_all_results_display = st.session_state.df_all_results 
     sector_perf_avg_results_display = st.session_state.sector_perf_avg_results
     screened_index_display = st.session_state.get('screened_index', "N/A") 
+
+    # Update Title and Markdown again here if results are shown, to ensure it reflects the *screened* index
+    # This covers the case where the selectbox might change, but results from a previous run are still shown
+    # before the new run button is clicked.
+    # However, the st.rerun() after selectbox change should make this less of an issue.
+    # For safety, we can ensure titles related to results use screened_index_display.
+
+    # st.title(f"📊 Momentum Sector Breakout Screener ({screened_index_display})") # Already set at top by session_state
+    # st.markdown(f"Identifies breakout or retest setups in top-performing sectors for **{screened_index_display}** stocks.") # Already set
+
 
     if df_all_results_display.empty:
         st.warning(f"No stocks met the screening criteria for {screened_index_display} based on the last run.")
@@ -240,16 +223,14 @@ if 'df_all_results' in st.session_state and 'sector_perf_avg_results' in st.sess
 
         sorted_sector_perf = sorted(sector_perf_avg_results_display.items(), key=lambda x: x[1], reverse=True)
         top_5_sector_names = [s[0] for s in sorted_sector_perf[:5]]
-
         df_filtered = df_all_results_display[df_all_results_display['Sector'].isin(top_5_sector_names)]
         setup_order = ["Breakout 52w", "Breakout", "Retest"]
         try:
             df_filtered['Setup_Sort'] = pd.Categorical(df_filtered['Setup'], categories=setup_order, ordered=True)
             df_filtered = df_filtered.sort_values(by=['Setup_Sort', 'Vol_Spike', 'Return_1M'], ascending=[True, False, False])
             df_filtered = df_filtered.drop(columns=['Setup_Sort'])
-        except KeyError: # Handle if a sort column is missing for some reason
+        except KeyError: 
             df_filtered = df_filtered.sort_values(by=['Vol_Spike', 'Return_1M'], ascending=[False, False])
-
 
         st.markdown("### 🏆 Top Performing Sectors (1W Avg Return)")
         if not sector_perf_avg_results_display:
@@ -268,8 +249,6 @@ if 'df_all_results' in st.session_state and 'sector_perf_avg_results' in st.sess
         if df_filtered.empty:
             st.info(f"No stocks found from the top performing sectors in {screened_index_display} matching the setup criteria.")
         else:
-            # ... (DataFrame display logic - Styler, etc. - remains the same) ...
-            # Ensure this part uses df_filtered
             display_cols_order = ['Sector', 'Price', 'Return_1D', 'Return_1W', 'Return_1M', 
                                   'Setup', 'Vol_Spike', 'Near_52W_High', 'Volume (M)', 'RSI']
             cols_to_show_in_df = [col for col in display_cols_order if col in df_filtered.columns]
@@ -310,7 +289,6 @@ if 'df_all_results' in st.session_state and 'sector_perf_avg_results' in st.sess
         if df_filtered.empty or 'RSI' not in df_filtered.columns or df_filtered['RSI'].dropna().empty:
             st.info(f"No data available for RSI distribution for {screened_index_display}.")
         else:
-            # ... (RSI plot logic remains the same) ...
             fig, ax = plt.subplots(figsize=(10, 4))
             sns.histplot(df_filtered['RSI'].dropna(), bins=20, kde=True, color='purple', ax=ax)
             ax.axvline(70, color='red', linestyle='--', linewidth=1, label='Overbought (70)')
@@ -321,7 +299,7 @@ if 'df_all_results' in st.session_state and 'sector_perf_avg_results' in st.sess
             ax.legend()
             st.pyplot(fig)
 else:
-    st.info("Click the 'Run Screener' button to view results.") # Initial message
+    st.info("Select an index and click the 'Run Screener' button to view results.") # Updated initial message
 
 st.markdown("---")
 st.markdown("Disclaimer: This is an informational tool and not financial advice. Always do your own research before investing.")
